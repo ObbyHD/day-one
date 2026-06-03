@@ -1,0 +1,1697 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<title>Day One</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script src="https://cdn.tailwindcss.com/3.4.16"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<!-- Auto-layout grid (drag-reflow, resize-push, compaction) -->
+<link rel="stylesheet" href="https://unpkg.com/react-grid-layout@1.4.4/css/styles.css" />
+<link rel="stylesheet" href="https://unpkg.com/react-resizable@3.0.5/css/styles.css" />
+<script src="https://unpkg.com/react-grid-layout@1.4.4/dist/react-grid-layout.min.js"></script>
+<style>
+  :root {
+    --bg:       #111111;
+    --bg-soft:  #161616;
+    --bg-card:  #181818;
+    --line:     rgba(255,255,255,0.06);
+    --line-2:   rgba(255,255,255,0.10);
+    --line-3:   rgba(255,255,255,0.16);
+    --text:     #ece8e2;
+    --text-dim: rgba(236,232,226,0.55);
+    --text-mute:rgba(236,232,226,0.32);
+    --accent:   #d97a4a;
+    --accent-2: #e89066;
+    --spotify:  #1db954;
+  }
+  html, body, #root { height: 100%; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    letter-spacing: -0.005em;
+  }
+  body.dragging { cursor: grabbing !important; user-select: none; }
+  body.resizing-c { cursor: nwse-resize !important; user-select: none; }
+  body.dragging *, body.resizing-c * { user-select: none !important; }
+
+  .scroll-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+  .scroll-thin::-webkit-scrollbar-track { background: transparent; }
+  .scroll-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 3px; }
+  .scroll-thin::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.12); }
+
+  /* Checkbox */
+  .check {
+    width: 18px; height: 18px; flex: 0 0 18px;
+    border-radius: 5px;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: transparent;
+    position: relative; cursor: pointer;
+    transition: border-color .2s ease, background .2s ease;
+    display: grid; place-items: center;
+  }
+  .check:hover { border-color: rgba(255,255,255,0.32); }
+  .check svg { width: 12px; height: 12px; overflow: visible; }
+  .check .tick {
+    fill: none; stroke: var(--accent);
+    stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;
+    stroke-dasharray: 18; stroke-dashoffset: 18;
+    transition: stroke-dashoffset .32s cubic-bezier(.65,.05,.36,1);
+  }
+  .check.checked { border-color: var(--accent); background: rgba(217,122,74,0.10); }
+  .check.checked .tick { stroke-dashoffset: 0; }
+
+  /* Strike */
+  .todo-text { position: relative; display: inline; transition: color .5s ease; }
+  .todo-text::after {
+    content: ""; position: absolute;
+    left: -2px; right: -2px; top: 55%; height: 1px;
+    background: var(--accent);
+    transform: scaleX(0); transform-origin: left center;
+    transition: transform .5s cubic-bezier(.65,.05,.36,1);
+  }
+  .todo-text.done { color: var(--text-mute); }
+  .todo-text.done::after { transform: scaleX(1); }
+
+  /* Modal */
+  .modal-backdrop { opacity: 0; transition: opacity .25s ease; }
+  .modal-backdrop.open { opacity: 1; }
+  .modal-panel {
+    opacity: 0; transform: scale(.97) translateY(6px);
+    transition: opacity .26s ease, transform .3s cubic-bezier(.22,1.2,.62,1);
+  }
+  .modal-backdrop.open .modal-panel { opacity: 1; transform: scale(1) translateY(0); }
+
+  /* Mic pulse */
+  .mic-recording::before, .mic-recording::after {
+    content: ""; position: absolute; inset: -2px;
+    border-radius: 9999px; background: rgba(217,122,74,0.28);
+    animation: micPulse 1.5s ease-out infinite;
+  }
+  .mic-recording::after { animation-delay: .55s; }
+  @keyframes micPulse {
+    0% { transform: scale(.9); opacity: .85; }
+    100% { transform: scale(1.7); opacity: 0; }
+  }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(3px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .rise { animation: rise .4s cubic-bezier(.22,1,.36,1) both; }
+
+  @keyframes nowPulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(217,122,74,0.50); }
+    50%     { box-shadow: 0 0 0 5px rgba(217,122,74,0); }
+  }
+  .now-dot { animation: nowPulse 2.4s ease-out infinite; }
+
+  .sidebar-content { transition: opacity .15s ease; }
+  .sidebar-collapsed .sidebar-content { opacity: 0; pointer-events: none; }
+
+  /* Task expand */
+  .task-details {
+    overflow: hidden;
+    max-height: 0; opacity: 0;
+    transform: translateY(-2px);
+    transition: max-height .38s cubic-bezier(.4,0,.2,1),
+                opacity .25s ease, transform .3s ease, margin-top .3s ease;
+  }
+  .task-box.expanded .task-details {
+    max-height: 240px; opacity: 1; transform: translateY(0); margin-top: 10px;
+  }
+  .task-box { transition: background-color .25s ease, border-color .25s ease; }
+  .task-box.expanded {
+    background-color: rgba(255,255,255,0.025);
+    border-color: rgba(255,255,255,0.10);
+  }
+
+  /* Widget shell — fills its grid cell */
+  .widget {
+    position: relative;
+    width: 100%; height: 100%;
+    background: rgba(255,255,255,0.015);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    transition: border-color .25s ease, box-shadow .2s ease;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .widget:hover { border-color: var(--line-2); }
+  .widget.dragging {
+    cursor: grabbing;
+    box-shadow: 0 16px 36px -10px rgba(0,0,0,0.65);
+    border-color: var(--line-3);
+    z-index: 20;
+  }
+  .widget-x {
+    position: absolute; top: 10px; right: 10px;
+    width: 22px; height: 22px;
+    display: grid; place-items: center;
+    border-radius: 6px;
+    color: var(--text-mute);
+    opacity: 0;
+    transition: opacity .15s ease, background-color .15s ease, color .15s ease;
+    z-index: 3;
+  }
+  .widget:hover .widget-x { opacity: 1; }
+  .widget-x:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+
+  .widget-title {
+    padding: 14px 18px 8px;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--text-mute);
+    display: flex; align-items: center; gap: 6px;
+    cursor: grab;
+    user-select: none;
+  }
+  .widget-title:active { cursor: grabbing; }
+  .widget-title-static { cursor: default; }
+  .widget-body { flex: 1; min-height: 0; padding: 0 18px 18px; display: flex; flex-direction: column; }
+
+  /* react-grid-layout integration */
+  .react-grid-item.react-grid-placeholder {
+    background: rgba(217,122,74,0.16) !important;
+    border: 1px dashed rgba(217,122,74,0.55);
+    border-radius: 10px;
+    opacity: 1 !important;
+    transition-duration: .12s;
+  }
+  .react-grid-item.react-draggable-dragging {
+    z-index: 30;
+    box-shadow: 0 16px 36px -10px rgba(0,0,0,0.65);
+  }
+  .react-grid-item.react-draggable-dragging .widget { border-color: var(--line-3); }
+  .react-grid-item.resizing { z-index: 30; }
+  /* Smoother reflow: widgets that move out of the way glide on a soft curve.
+     The item being dragged/resized has no transition (follows the cursor 1:1). */
+  .react-grid-item {
+    transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
+                width 220ms cubic-bezier(0.22, 1, 0.36, 1),
+                height 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform;
+  }
+  .react-grid-item.cssTransforms { transition-property: transform, width, height; }
+  .react-grid-item.react-draggable-dragging,
+  .react-grid-item.resizing { transition: none !important; }
+  .react-grid-item.react-grid-placeholder {
+    transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1) !important;
+  }
+  /* Resize handles: invisible grab zones (no default triangle), except a subtle SE marker */
+  .react-resizable-handle { background-image: none !important; opacity: 0; }
+  .widget .react-resizable-handle,
+  .react-grid-item:hover .react-resizable-handle { opacity: 1; }
+  .react-resizable-handle-se::after {
+    content: ""; position: absolute; right: 4px; bottom: 4px;
+    width: 0; height: 0;
+    border-left: 6px solid transparent;
+    border-bottom: 6px solid rgba(255,255,255,0.22);
+  }
+
+  /* Snap-raster overlay (toggle in Personal) */
+  .grid-wrap {
+    position: relative;
+    border-radius: 12px;
+    background-position: 0 0;
+    background-image: none;
+    transition: background-image .15s ease;
+  }
+  .grid-wrap.show-grid {
+    background-image:
+      linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px);
+    background-size: var(--cell-w) var(--cell-h);
+  }
+
+  /* Loading splash — handwriting draw-in (21st.dev kokonutd style, native) */
+  .splash {
+    position: fixed; inset: 0; z-index: 100;
+    background: var(--bg);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 18px;
+    transition: opacity .5s ease;
+  }
+  .splash.fade { opacity: 0; pointer-events: none; }
+  .hw-text {
+    fill: transparent;
+    stroke: var(--text);
+    stroke-width: 1.1;
+    stroke-linejoin: round; stroke-linecap: round;
+    stroke-dasharray: 520;
+    stroke-dashoffset: 520;
+    animation: hwDraw 1.5s cubic-bezier(.6,.05,.2,1) forwards, hwFill .6s ease 1.35s forwards;
+  }
+  @keyframes hwDraw { to { stroke-dashoffset: 0; } }
+  @keyframes hwFill { to { fill: var(--text); } }
+  .splash-sub {
+    font-size: 11px; letter-spacing: 0.32em; text-transform: uppercase;
+    color: var(--text-mute);
+    opacity: 0; animation: subIn .6s ease 1.5s forwards;
+  }
+  @keyframes subIn { to { opacity: 1; } }
+
+  /* Skeleton shimmer for widgets */
+  .skel { position: relative; overflow: hidden; background: rgba(255,255,255,0.03);
+          border: 1px solid var(--line); border-radius: 10px; }
+  .skel::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
+    transform: translateX(-100%); animation: shimmer 1.3s infinite;
+  }
+  @keyframes shimmer { 100% { transform: translateX(100%); } }
+
+  /* Chat typing indicator */
+  .typing { display: inline-flex; gap: 3px; align-items: center; height: 8px; }
+  .typing span {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--text-mute);
+    animation: typingB 1s ease-in-out infinite;
+  }
+  .typing span:nth-child(2) { animation-delay: .15s; }
+  .typing span:nth-child(3) { animation-delay: .3s; }
+  @keyframes typingB { 0%,100% { opacity: .25; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }
+
+  /* Inline task edit inputs */
+  .task-input {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 6px 9px;
+    font-size: 12.5px;
+    color: var(--text-dim);
+    outline: none;
+    transition: border-color .15s ease;
+  }
+  .task-input:focus { border-color: var(--line-3); color: var(--text); }
+  .task-input::placeholder { color: var(--text-mute); }
+  .task-input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cursor: pointer; }
+
+  /* Todo timeline cell (static grid anchor) */
+  .todo-cell { width: 100%; height: 100%; display: flex; flex-direction: column; padding-left: 4px; }
+  .todo-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+
+  ::selection { background: rgba(217,122,74,0.32); color: #fef4ec; }
+
+  button:focus, [role="checkbox"]:focus { outline: none; }
+  button:focus-visible, [role="checkbox"]:focus-visible {
+    box-shadow: 0 0 0 2px rgba(217,122,74,0.4);
+  }
+
+  /* Spotify equalizer */
+  .eq { display: inline-flex; align-items: end; gap: 2px; height: 11px; }
+  .eq span {
+    display: block; width: 2px; background: var(--spotify);
+    border-radius: 1px; transform-origin: bottom;
+    animation: eqB 1s ease-in-out infinite;
+  }
+  .eq span:nth-child(1) { animation-delay: 0s; }
+  .eq span:nth-child(2) { animation-delay: .15s; }
+  .eq span:nth-child(3) { animation-delay: .3s; }
+  .eq span:nth-child(4) { animation-delay: .45s; }
+  @keyframes eqB {
+    0%,100% { height: 3px; }
+    50%     { height: 11px; }
+  }
+
+  /* Heute label */
+  .heute-label {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--text-mute);
+    padding: 0 0 10px 72px;
+  }
+</style>
+</head>
+<body>
+<template id="__bundler_thumbnail" data-bg-color="#111111">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect x="120" y="300" width="220" height="200" rx="20" fill="none" stroke="#3a3a3a" stroke-width="6"/>
+    <rect x="500" y="250" width="200" height="300" rx="20" fill="none" stroke="#3a3a3a" stroke-width="6"/>
+    <circle cx="800" cy="400" r="100" fill="none" stroke="#8aa17d" stroke-width="14" stroke-dasharray="470 628" stroke-linecap="round" transform="rotate(-90 800 400)"/>
+    <text x="600" y="180" text-anchor="middle" font-family="Inter, sans-serif" font-size="64" font-weight="600" fill="#ece8e2">Day One</text>
+  </svg>
+</template>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } = React;
+
+/* ---------- Icons ---------- */
+const Icon = ({ size = 16, stroke = 1.6, fill = "none", children }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size}
+       viewBox="0 0 24 24" fill={fill} stroke="currentColor"
+       strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round">{children}</svg>
+);
+const PanelLeft  = (p) => <Icon {...p}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></Icon>;
+const PanelRight = (p) => <Icon {...p}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/></Icon>;
+const MicIco     = (p) => <Icon {...p}><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><path d="M12 19v3"/></Icon>;
+const ArrowUp    = (p) => <Icon {...p}><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></Icon>;
+const UserIco    = (p) => <Icon {...p}><circle cx="12" cy="8" r="4"/><path d="M4 22a8 8 0 0 1 16 0"/></Icon>;
+const PlusIco    = (p) => <Icon {...p}><path d="M12 5v14"/><path d="M5 12h14"/></Icon>;
+const XIco       = (p) => <Icon {...p}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></Icon>;
+const Edit2      = (p) => <Icon {...p}><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></Icon>;
+const TrashIco   = (p) => <Icon {...p}><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></Icon>;
+const PlayIco    = (p) => <Icon {...p}><polygon points="6 3 20 12 6 21 6 3"/></Icon>;
+const PauseIco   = (p) => <Icon {...p}><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></Icon>;
+const SkipIco    = (p) => <Icon {...p}><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" x2="19" y1="5" y2="19"/></Icon>;
+const HeartIco   = ({ filled, size=15 }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24"
+       fill={filled ? "currentColor" : "none"} stroke="currentColor"
+       strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.51 4.04 3 5.5l7 7Z"/>
+  </svg>
+);
+const NoteIco    = (p) => <Icon {...p}><path d="M4 4a2 2 0 0 1 2-2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></Icon>;
+const TargetIco  = (p) => <Icon {...p}><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/></Icon>;
+const TrendIco   = (p) => <Icon {...p}><path d="m3 17 6-6 4 4 8-8"/><path d="M14 7h7v7"/></Icon>;
+const MusicIco   = (p) => <Icon {...p}><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></Icon>;
+const EyeIco     = (p) => <Icon {...p}><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></Icon>;
+
+const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+
+/* Paler red→green for Tagesziel */
+function progressColor(pct) {
+  // hue 5 (warm red) → 138 (sage green); muted saturation
+  const hue = 5 + pct * 133;
+  return `hsl(${hue.toFixed(0)}, 38%, 58%)`;
+}
+
+/* ---------- Checkbox ---------- */
+function Check({ checked, onToggle }) {
+  const stop = (e) => e.stopPropagation();
+  const handle = (e) => { e.stopPropagation(); onToggle(); };
+  return (
+    <span
+      className={`check ${checked ? "checked" : ""}`}
+      onClick={handle} onDoubleClick={stop} onMouseDown={stop} onMouseUp={stop}
+      role="checkbox" aria-checked={checked} tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === " " || e.key === "Enter") {
+          e.preventDefault(); e.stopPropagation(); onToggle();
+        }
+      }}
+    >
+      <svg viewBox="0 0 16 16">
+        <path className="tick" d="M3 8.6 L6.6 12 L13 4.6" />
+      </svg>
+    </span>
+  );
+}
+
+/* ---------- "Now" line on the timeline (follows the real clock) ---------- */
+function NowMarker({ min }) {
+  const label = `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+  return (
+    <div className="grid items-center select-none" style={{ gridTemplateColumns: "54px 18px 1fr" }}>
+      <div className="pr-3 text-right text-[11px] tabular-nums font-semibold text-[color:var(--accent-2)]">{label}</div>
+      <div className="relative flex justify-center">
+        <span className="relative z-10 w-[9px] h-[9px] rounded-full bg-[color:var(--accent)] now-dot"
+              style={{ boxShadow: "0 0 0 3px var(--bg)" }} />
+      </div>
+      <div className="h-px rounded-full bg-[color:var(--accent)]"
+           style={{ boxShadow: "0 0 8px rgba(217,122,74,0.55)" }} />
+    </div>
+  );
+}
+
+/* ---------- Timeline row ---------- */
+function TodoRow({ todo, idx, isNow, expanded, startEditing, onExpand, onCollapse, onToggle, onDelete, onUpdate, onCancel }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({ time: todo.time, title: todo.title, duration: todo.duration || "", note: todo.note || "" });
+  useEffect(() => {
+    if (startEditing) { setDraft({ time: todo.time, title: todo.title, duration: todo.duration || "", note: todo.note || "" }); setEditing(true); }
+  }, [startEditing]);
+  const beginEdit = (e) => { e && e.stopPropagation(); setDraft({ time: todo.time, title: todo.title, duration: todo.duration || "", note: todo.note || "" }); setEditing(true); };
+  const saveEdit = (e) => {
+    e && e.stopPropagation();
+    onUpdate(todo.id, { time: draft.time || "12:00", title: draft.title.trim() || "Aufgabe", duration: draft.duration, note: draft.note });
+    setEditing(false);
+  };
+  const handleDouble = (e) => {
+    e.stopPropagation();
+    if (expanded) onCollapse(); else onExpand(todo.id);
+  };
+  const stop = (e) => e.stopPropagation();
+  return (
+    <div className="rise grid items-start"
+         style={{ gridTemplateColumns: "54px 18px 1fr", animationDelay: `${idx * 35}ms` }}>
+      <div className="pt-[10px] text-right pr-3">
+        <div className="text-[12px] tabular-nums text-[color:var(--text-dim)] font-medium tracking-tight">
+          {todo.time}
+        </div>
+      </div>
+      <div className="relative flex justify-center pt-[14px]">
+        <div className="absolute top-0 bottom-[-18px] w-px bg-[color:var(--line)]" />
+        <span className={`relative z-10 w-[7px] h-[7px] rounded-full ${
+          isNow ? "bg-[color:var(--accent)] now-dot"
+                : todo.done ? "bg-[color:var(--accent)]/35"
+                : "bg-[rgba(255,255,255,0.18)]"
+        }`} />
+      </div>
+      <div className="pb-2.5">
+        <div onDoubleClick={handleDouble}
+          className={`task-box ${expanded ? "expanded" : ""} relative pl-3 pr-3 py-2.5 rounded-lg border border-transparent hover:border-[color:var(--line)] cursor-default select-none`}
+          aria-expanded={expanded} title="Doppelklick für Details">
+          <div className="flex items-center gap-3">
+            <Check checked={todo.done} onToggle={() => onToggle(todo.id)} />
+            <span className={`todo-text flex-1 min-w-0 truncate text-[14px] leading-snug ${todo.done ? "done" : "text-[color:var(--text)]"}`}>
+              {todo.title}
+            </span>
+          </div>
+          <div className="task-details">
+            <div className="pl-[30px] pr-1">
+              {editing ? (
+                <div onMouseDown={stop} onDoubleClick={stop}>
+                  <div className="flex items-center gap-2">
+                    <input type="time" value={draft.time} onChange={(e) => setDraft(d => ({ ...d, time: e.target.value }))}
+                      className="task-input tabular-nums w-[100px]" />
+                    <input value={draft.duration} onChange={(e) => setDraft(d => ({ ...d, duration: e.target.value }))}
+                      placeholder="Dauer" className="task-input flex-1" />
+                  </div>
+                  <input value={draft.title} autoFocus onChange={(e) => setDraft(d => ({ ...d, title: e.target.value }))}
+                    onKeyDown={(e) => { if (e.key === "Enter") saveEdit(e); }}
+                    placeholder="Titel" className="task-input w-full mt-2 text-[14px] text-[color:var(--text)]" />
+                  <textarea value={draft.note} onChange={(e) => setDraft(d => ({ ...d, note: e.target.value }))}
+                    placeholder="Notiz (optional)" rows={2} className="task-input w-full mt-2 resize-none" />
+                  <div className="mt-2.5 flex items-center gap-1.5">
+                    <button onClick={saveEdit}
+                      className="inline-flex items-center gap-1.5 text-[11.5px] text-white bg-[color:var(--accent)] hover:bg-[color:var(--accent-2)] px-2.5 py-1 rounded-md transition-colors">
+                      Speichern
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); setEditing(false); onCancel && onCancel(todo.id); }}
+                      className="inline-flex items-center gap-1.5 text-[11.5px] text-[color:var(--text-dim)] hover:text-[color:var(--text)] px-2 py-1 rounded-md border border-[color:var(--line)] transition-colors">
+                      Abbrechen
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3 text-[11px] tabular-nums text-[color:var(--text-mute)] uppercase tracking-[0.16em]">
+                    <span>{todo.time}</span>
+                    {todo.duration && <span className="w-1 h-1 rounded-full bg-[color:var(--line-3)]" />}
+                    {todo.duration && <span>{todo.duration}</span>}
+                  </div>
+                  {todo.note && (
+                    <p className="mt-2.5 text-[13px] leading-relaxed text-[color:var(--text-dim)]">{todo.note}</p>
+                  )}
+                  <div className="mt-3 flex items-center gap-1.5">
+                    <button onClick={beginEdit}
+                      className="inline-flex items-center gap-1.5 text-[11.5px] text-[color:var(--text-dim)] hover:text-[color:var(--text)] px-2 py-1 rounded-md border border-[color:var(--line)] hover:border-[color:var(--line-2)] transition-colors">
+                      <Edit2 size={11}/> Bearbeiten
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); onDelete(todo.id); }}
+                      className="inline-flex items-center gap-1.5 text-[11.5px] text-[color:var(--text-dim)] hover:text-[color:var(--accent-2)] px-2 py-1 rounded-md border border-[color:var(--line)] hover:border-[color:var(--line-2)] transition-colors">
+                      <TrashIco size={11}/> Entfernen
+                    </button>
+                    <span className="ml-auto text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-mute)]">
+                      Esc · schließen
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Widget shell (presentational; positioned by the grid) ---------- */
+// Drag handle = the title bar (.widget-title). Resize handles are injected by
+// react-grid-layout. This component just renders the chrome and fills its cell.
+function WidgetShell({ onDismiss, title, children }) {
+  return (
+    <div className="widget">
+      {onDismiss && (
+        <button className="widget-x no-drag" onMouseDown={(e) => e.stopPropagation()}
+                onClick={onDismiss} aria-label="Widget schließen">
+          <XIco size={13}/>
+        </button>
+      )}
+      <div className="widget-title">{title}</div>
+      <div className="widget-body no-drag">{children}</div>
+    </div>
+  );
+}
+
+/* ---------- Notizen ---------- */
+function NotesWidget({ value, setValue, onDismiss }) {
+  return (
+    <WidgetShell onDismiss={onDismiss} title="Notizen · heute">
+      <textarea
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="Gedanken, Ideen, ein Satz vor dem Tag …"
+        className="flex-1 w-full bg-transparent resize-none outline-none text-[13.5px] leading-relaxed text-[color:var(--text)] placeholder-[color:var(--text-mute)] scroll-thin"
+      />
+      <div className="mt-3 pt-3 border-t border-[color:var(--line)] flex items-center justify-between text-[10.5px] uppercase tracking-[0.18em] text-[color:var(--text-mute)]">
+        <span>setzt sich täglich zurück</span>
+        <span className="tabular-nums">{value.length}</span>
+      </div>
+    </WidgetShell>
+  );
+}
+
+/* ---------- Tagesziel (red→pale green) ---------- */
+function TageszielWidget({ done, total, onDismiss }) {
+  const pct = total ? done / total : 0;
+  const color = progressColor(pct);
+  const ringRef = useRef(null);
+  const [ringBox, setRingBox] = useState({ w: 220, h: 180 });
+  useEffect(() => {
+    if (!ringRef.current) return;
+    const ro = new ResizeObserver((es) => {
+      const cr = es[0].contentRect;
+      setRingBox({ w: cr.width, h: cr.height });
+    });
+    ro.observe(ringRef.current);
+    return () => ro.disconnect();
+  }, []);
+  const size = Math.max(90, Math.min(ringBox.w - 30, ringBox.h - 56, 190));
+  const stroke = 10;
+  const r = (size - stroke) / 2;
+  const C = 2 * Math.PI * r;
+  const dash = C * pct;
+  const label =
+    pct >= 1   ? "Geschafft" :
+    pct >= 0.7 ? "Fast fertig" :
+    pct >= 0.4 ? "Auf Kurs" :
+    pct > 0    ? "Angefangen" :
+    "Noch nicht";
+
+  return (
+    <WidgetShell onDismiss={onDismiss} title="Tagesziel">
+      <div ref={ringRef} className="flex-1 flex flex-col items-center justify-center min-h-0">
+        <div className="relative" style={{ width: size, height: size }}>
+          <svg width={size} height={size}>
+            <circle cx={size/2} cy={size/2} r={r}
+                    fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={stroke}/>
+            <circle cx={size/2} cy={size/2} r={r}
+                    fill="none" stroke={color} strokeWidth={stroke}
+                    strokeDasharray={`${dash} ${C}`}
+                    strokeLinecap="round"
+                    transform={`rotate(-90 ${size/2} ${size/2})`}
+                    style={{ transition: "stroke-dasharray .7s cubic-bezier(.22,1,.36,1), stroke .5s ease" }}/>
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <div className="text-[28px] font-semibold tabular-nums leading-none" style={{ color }}>
+              {Math.round(pct * 100)}%
+            </div>
+            <div className="text-[10.5px] uppercase tracking-[0.18em] text-[color:var(--text-mute)] mt-1.5 tabular-nums">
+              {done}/{total}
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 text-[11.5px] text-[color:var(--text-dim)] flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }}/>
+          {label}
+        </div>
+      </div>
+    </WidgetShell>
+  );
+}
+
+/* ---------- Verlauf (straight polyline) ---------- */
+function VerlaufWidget({ onDismiss, days }) {
+  const data = days && days.length ? days : [];
+  const hasData = data.some(d => d.has);
+
+  const wrapRef = useRef(null);
+  const [box, setBox] = useState({ w: 280, h: 120 });
+  useEffect(() => {
+    if (!wrapRef.current) return;
+    const ro = new ResizeObserver((entries) => {
+      const cr = entries[0].contentRect;
+      setBox({ w: cr.width, h: cr.height });
+    });
+    ro.observe(wrapRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  const pad = { t: 12, r: 6, b: 22, l: 6 };
+  const W = Math.max(box.w, 80);
+  const H = Math.max(box.h, 80);
+  const innerW = W - pad.l - pad.r;
+  const innerH = H - pad.t - pad.b;
+  const stepX = data.length > 1 ? innerW / (data.length - 1) : 0;
+  const points = data.map((d, i) => ({
+    x: pad.l + i * stepX,
+    y: pad.t + (1 - d.p) * innerH,
+    p: d.p, wd: d.wd
+  }));
+  const lineD = points.map((p, i) => `${i ? "L" : "M"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
+
+  const last = data[data.length - 1].p;
+  const prev = data[data.length - 2].p;
+  const delta = Math.round((last - prev) * 100);
+
+  return (
+    <WidgetShell onDismiss={onDismiss} title="Verlauf · 7 Tage">
+      <div className="flex items-baseline justify-between mb-2">
+        <div className="flex items-baseline gap-2">
+          <span className="text-[18px] font-semibold tabular-nums text-[color:var(--text)]">
+            {Math.round(last * 100)}%
+          </span>
+          <span className="text-[11px] tabular-nums text-[color:var(--text-dim)]">
+            {delta >= 0 ? "+" : ""}{delta}%
+          </span>
+        </div>
+        <span className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-mute)]">heute</span>
+      </div>
+      <div ref={wrapRef} className="flex-1 min-h-0 relative">
+        <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="absolute inset-0">
+          <line x1={pad.l} x2={W-pad.r} y1={pad.t+innerH} y2={pad.t+innerH}
+                stroke="rgba(255,255,255,0.05)" strokeWidth="1"/>
+          <path d={lineD} fill="none" stroke="rgba(236,232,226,0.85)"
+                strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+          {points.map((pt, i) => {
+            const isLast = i === points.length - 1;
+            return (
+              <circle key={i} cx={pt.x} cy={pt.y} r={isLast ? 3 : 2}
+                      fill={isLast ? "var(--text)" : "var(--bg)"}
+                      stroke="rgba(236,232,226,0.85)" strokeWidth="1.2"/>
+            );
+          })}
+          {points.map((pt, i) => (
+            <text key={`l${i}`} x={pt.x} y={H-6} textAnchor="middle"
+                  fontSize="9.5" fill="rgba(236,232,226,0.32)"
+                  style={{ textTransform: "uppercase", letterSpacing: "0.14em" }}>
+              {data[i].wd}
+            </text>
+          ))}
+        </svg>
+      </div>
+    </WidgetShell>
+  );
+}
+
+/* ---------- Spotify (real HTML5 audio, playlist from Jamendo via /api/music) ---------- */
+const FALLBACK_PLAYLIST = [
+  { title: "Morning Drive", artist: "Motivation Mix", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", cover: "" },
+  { title: "Momentum",      artist: "Motivation Mix", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3", cover: "" },
+  { title: "Rise Up",       artist: "Motivation Mix", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3", cover: "" },
+  { title: "Flow State",    artist: "Motivation Mix", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3", cover: "" },
+];
+const dayIndex = (len) => {
+  if (!len) return 0;
+  const d = new Date();
+  const day = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000);
+  return day % len;
+};
+function SpotifyWidget({ onDismiss }) {
+  const audioRef = useRef(null);
+  const [tracks, setTracks] = useState(FALLBACK_PLAYLIST);
+  const [playing, setPlaying] = useState(false);
+  const [liked, setLiked] = useState(false);
+  const [trackIdx, setTrackIdx] = useState(() => dayIndex(FALLBACK_PLAYLIST.length));
+  const [cur, setCur] = useState(0);
+  const [dur, setDur] = useState(0);
+  const track = tracks[trackIdx] || tracks[0] || {};
+  const progress = dur ? cur / dur : 0;
+
+  // Fetch the daily motivational playlist once (Jamendo, or fallback).
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/music").then(r => r.json()).then(j => {
+      if (!alive || !Array.isArray(j.tracks) || !j.tracks.length) return;
+      setTracks(j.tracks);
+      setTrackIdx(dayIndex(j.tracks.length));
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  // Load the selected track; keep playing across skips.
+  useEffect(() => {
+    const a = audioRef.current; if (!a || !track.url) return;
+    a.src = track.url; a.load(); setCur(0); setDur(0);
+    if (playing) a.play().catch(() => {});
+  }, [trackIdx, tracks]);
+
+  const skip = (dir) => setTrackIdx(i => (i + dir + tracks.length) % tracks.length);
+  const togglePlay = () => {
+    const a = audioRef.current; if (!a) return;
+    if (a.paused) a.play().catch(() => {}); else a.pause();
+  };
+
+  const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+
+  return (
+    <WidgetShell onDismiss={onDismiss} title="Heute · Motivation">
+      <audio ref={audioRef} preload="metadata"
+        onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+        onTimeUpdate={(e) => setCur(e.target.currentTime)}
+        onLoadedMetadata={(e) => setDur(e.target.duration || 0)}
+        onEnded={() => skip(1)} />
+      <div className="flex-1 flex flex-col gap-2.5 min-h-0 justify-center">
+        {/* Track row: album + title/artist + spotify badge */}
+        <div className="flex items-center gap-3">
+          <div className="shrink-0 relative w-[48px] h-[48px] rounded-md overflow-hidden"
+               style={{
+                 background: "radial-gradient(circle at 30% 30%, #2a2724, #0c0a08)",
+                 border: "1px solid var(--line-2)",
+               }}>
+            {track.cover ? (
+              <img src={track.cover} alt="" className="absolute inset-0 w-full h-full object-cover" draggable="false" />
+            ) : (
+              <div className="absolute inset-0 grid place-items-center">
+                <div className="w-4 h-4 rounded-full border border-white/20"/>
+                <div className="absolute w-1 h-1 rounded-full bg-white/30"/>
+              </div>
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[15px] font-semibold tracking-tight text-[color:var(--text)] truncate leading-tight">
+              {track.title}
+            </div>
+            <div className="text-[12px] text-[color:var(--text-dim)] truncate mt-0.5">
+              {track.artist}
+            </div>
+          </div>
+          <div className="flex items-center gap-1 text-[9.5px] uppercase tracking-[0.18em] text-[color:var(--text-mute)] shrink-0">
+            {playing ? <span className="eq"><span/><span/><span/><span/></span>
+                     : <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--spotify)" }}/>}
+            Spotify
+          </div>
+        </div>
+
+        {/* Progress */}
+        <div>
+          <div className="h-[3px] w-full bg-white/[0.06] rounded-full overflow-hidden">
+            <div className="h-full bg-[color:var(--spotify)] rounded-full"
+                 style={{ width: `${progress * 100}%`, transition: playing ? "width .1s linear" : "width .2s ease" }}/>
+          </div>
+          <div className="mt-1 flex items-center justify-between text-[10px] tabular-nums text-[color:var(--text-mute)]">
+            <span>{fmt(cur)}</span>
+            <span>{fmt(dur)}</span>
+          </div>
+        </div>
+
+        {/* Controls — centered */}
+        <div className="flex items-center justify-center gap-2">
+          <button onClick={() => setLiked(l => !l)}
+            onMouseDown={(e) => e.stopPropagation()}
+            className={`w-8 h-8 grid place-items-center rounded-full transition-colors
+              ${liked ? "text-[color:var(--spotify)]" : "text-[color:var(--text-dim)] hover:text-[color:var(--text)]"}`}
+            aria-label="Like">
+            <HeartIco filled={liked} size={14}/>
+          </button>
+          <button onClick={() => skip(-1)} onMouseDown={(e) => e.stopPropagation()}
+                  className="w-8 h-8 grid place-items-center rounded-full text-[color:var(--text-dim)] hover:text-[color:var(--text)] -scale-x-100"
+                  aria-label="Vorheriger Titel">
+            <SkipIco size={13}/>
+          </button>
+          <button onClick={togglePlay} onMouseDown={(e) => e.stopPropagation()}
+            className="w-9 h-9 grid place-items-center rounded-full bg-white/[0.06] border border-[color:var(--line-2)] text-[color:var(--text)] hover:bg-white/[0.1] hover:text-[color:var(--spotify)] transition-colors"
+            aria-label={playing ? "Pause" : "Play"} title={playing ? "Pause" : "Play"}>
+            {playing ? <PauseIco size={13} fill="currentColor" stroke={0}/> : <PlayIco size={13} fill="currentColor" stroke={0}/>}
+          </button>
+          <button onClick={() => skip(1)} onMouseDown={(e) => e.stopPropagation()}
+                  className="w-8 h-8 grid place-items-center rounded-full text-[color:var(--text-dim)] hover:text-[color:var(--text)]"
+                  aria-label="Nächster Titel">
+            <SkipIco size={13}/>
+          </button>
+        </div>
+      </div>
+    </WidgetShell>
+  );
+}
+
+/* ---------- KI-Beobachtung (real: analyses your data) ---------- */
+const OBS_KEY = "dayone-observation-v1";
+const ANALYSIS_AFTER_DAYS = 7; // start behavioural analysis only after a week of data
+function KIObservationWidget({ onDismiss, data, onObservation }) {
+  const { todos = [], notes = "", profile = {}, history = {} } = data || {};
+  const cached = (() => { try { return JSON.parse(localStorage.getItem(OBS_KEY) || "null"); } catch { return null; } })();
+  const [obs, setObs] = useState((DEMO ? (data?.observation || "") : "") || cached?.text || "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const daysTracked = Object.keys(history).length;
+  const ready = daysTracked >= ANALYSIS_AFTER_DAYS;
+
+  // Last 7 days of real completion ratio for the habit dots.
+  const week = useMemo(() => {
+    const out = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      const key = dateKey(d);
+      out.push({
+        letter: d.toLocaleDateString("de-DE", { weekday: "narrow" }),
+        pct: history[key] ?? 0,
+        has: key in history,
+        isToday: i === 0,
+      });
+    }
+    return out;
+  }, [history]);
+
+  const generate = async () => {
+    if (busy) return;
+    setBusy(true); setErr("");
+    try {
+      const now = new Date().toLocaleString("de-DE", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+      const res = await fetch("/api/observe", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ context: { todos, notes, profile, history, now } }),
+      });
+      const j = await res.json();
+      const text = j.observation || "Noch zu wenig Daten für eine Beobachtung.";
+      setObs(text);
+      onObservation && onObservation(text);
+      try { localStorage.setItem(OBS_KEY, JSON.stringify({ text, day: dateKey() })); } catch {}
+    } catch (e) {
+      setErr("Server nicht erreichbar.");
+    } finally { setBusy(false); }
+  };
+
+  // Auto-generate once per day — only after a full week of tracked data.
+  useEffect(() => {
+    if (DEMO) return;
+    if (!ready) return;
+    if (cached?.day === dateKey()) return;
+    if (todos.length === 0) return;
+    generate();
+  }, [ready]);
+
+  return (
+    <WidgetShell onDismiss={onDismiss} title="KI · Beobachtung">
+      <div className="flex-1 min-h-0 flex flex-col">
+        <div className="flex-1 min-h-0 overflow-y-auto scroll-thin pr-1">
+          {busy ? (
+            <div className="h-full flex items-center justify-center gap-2 text-[11px] text-[color:var(--text-mute)] uppercase tracking-[0.18em]">
+              <span className="typing"><span/><span/><span/></span> analysiert deine Daten
+            </div>
+          ) : !ready ? (
+            <div className="h-full flex flex-col items-center justify-center text-center gap-2">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--text-mute)]">Sammelt deine Gewohnheiten</div>
+              <div className="text-[12px] text-[color:var(--text-dim)]">
+                Verhaltensanalyse startet nach 7 Tagen — noch {Math.max(0, ANALYSIS_AFTER_DAYS - daysTracked)} {ANALYSIS_AFTER_DAYS - daysTracked === 1 ? "Tag" : "Tage"}.
+              </div>
+              <div className="text-[11px] tabular-nums text-[color:var(--text-mute)]">Tag {Math.min(daysTracked, ANALYSIS_AFTER_DAYS)} / {ANALYSIS_AFTER_DAYS}</div>
+            </div>
+          ) : obs ? (
+            <p className="text-[13px] leading-relaxed text-[color:var(--text-dim)] whitespace-pre-line">{obs}</p>
+          ) : (
+            <div className="h-full flex items-center justify-center text-[11px] text-[color:var(--text-mute)] uppercase tracking-[0.18em] text-center">
+              {err || "Tippe auf Aktualisieren für deine Analyse."}
+            </div>
+          )}
+        </div>
+        <div className="pt-3 mt-2 border-t border-[color:var(--line)]">
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-mute)]">Letzte 7 Tage</div>
+            <button onClick={generate} disabled={busy || !ready}
+              title={ready ? "Analyse aktualisieren" : "Verfügbar nach 7 Tagen"}
+              className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--text-mute)] hover:text-[color:var(--text)] disabled:opacity-40 transition-colors">
+              Aktualisieren
+            </button>
+          </div>
+          <div className="grid grid-cols-7 gap-1 mb-1">
+            {week.map((d, i) => (
+              <div key={i} className={`text-center text-[10px] uppercase tracking-[0.15em] ${d.isToday ? "text-[color:var(--text)]" : "text-[color:var(--text-mute)]"}`}>{d.letter}</div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-1">
+            {week.map((d, i) => {
+              const base = "mx-auto w-2.5 h-2.5 rounded-full";
+              const cls = d.has && d.pct > 0
+                ? base
+                : d.isToday ? `${base} border-2 border-[color:var(--accent)]` : `${base} border border-[color:var(--line-3)]`;
+              const style = d.has && d.pct > 0 ? { background: progressColor(d.pct) } : undefined;
+              return <div key={i} className={cls} style={style}
+                          title={`${Math.round(d.pct * 100)}% erledigt${d.isToday ? " · heute" : ""}`} />;
+            })}
+          </div>
+        </div>
+      </div>
+    </WidgetShell>
+  );
+}
+
+/* ---------- Personal Modal ---------- */
+function PersonalModal({ open, onClose, profile, setProfile, onResetLayout, showGrid, setShowGrid }) {
+  const [mounted, setMounted] = useState(open);
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      requestAnimationFrame(() => setShow(true));
+    } else if (mounted) {
+      setShow(false);
+      const t = setTimeout(() => setMounted(false), 280);
+      return () => clearTimeout(t);
+    }
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+  if (!mounted) return null;
+  return (
+    <div className={`modal-backdrop ${show ? "open" : ""} fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md`}
+         onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal-panel w-[520px] max-w-[92vw] bg-[color:var(--bg-soft)] border border-[color:var(--line-2)] rounded-2xl shadow-2xl overflow-hidden">
+        <div className="px-7 pt-6 pb-4 flex items-start justify-between border-b border-[color:var(--line)]">
+          <div>
+            <h2 className="text-[19px] font-semibold tracking-tight text-[color:var(--text)]">Persönlich</h2>
+            <p className="text-[12px] text-[color:var(--text-dim)] mt-1">Drei Notizen — mehr braucht es nicht.</p>
+          </div>
+          <button onClick={onClose} className="text-[color:var(--text-dim)] hover:text-[color:var(--text)] p-1.5 -mr-2 rounded-md hover:bg-white/5">
+            <XIco size={16} />
+          </button>
+        </div>
+        <div className="px-7 py-6 space-y-5 max-h-[70vh] overflow-y-auto scroll-thin">
+          <BorderedField label="Name" value={profile.name || ""}
+            onChange={(v) => setProfile({ ...profile, name: v })}
+            placeholder="Wie sollen wir dich nennen?" rows={1}/>
+          <BorderedField label="Über mich" value={profile.about}
+            onChange={(v) => setProfile({ ...profile, about: v })}
+            placeholder="Wer bist du, was machst du …"/>
+          <BorderedField label="Meine Ziele" value={profile.goals}
+            onChange={(v) => setProfile({ ...profile, goals: v })}
+            placeholder="Was willst du erreichen?"/>
+          <BorderedField label="Tägliche Routinen" value={profile.routines}
+            onChange={(v) => setProfile({ ...profile, routines: v })}
+            placeholder="Was wiederholst du jeden Tag?"/>
+
+          <div className="pt-3 mt-1 border-t border-[color:var(--line)] space-y-4">
+            <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--text-mute)]">Layout</div>
+
+            {setShowGrid && (
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[12.5px] text-[color:var(--text)]">Raster anzeigen</div>
+                  <div className="text-[11.5px] text-[color:var(--text-dim)]">Blendet das Snap-Raster zum Ausrichten ein.</div>
+                </div>
+                <button
+                  onClick={() => setShowGrid(v => !v)}
+                  role="switch" aria-checked={showGrid}
+                  className={`relative w-[42px] h-[24px] rounded-full transition-colors ${showGrid ? "bg-[color:var(--accent)]" : "bg-white/10"}`}>
+                  <span className={`absolute top-[3px] w-[18px] h-[18px] rounded-full bg-white transition-all ${showGrid ? "left-[21px]" : "left-[3px]"}`} />
+                </button>
+              </div>
+            )}
+
+            {onResetLayout && (
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[12.5px] text-[color:var(--text)]">Layout zurücksetzen</div>
+                  <div className="text-[11.5px] text-[color:var(--text-dim)]">Setzt Position &amp; Größe aller Widgets auf Standard.</div>
+                </div>
+                <button
+                  onClick={() => { onResetLayout(); }}
+                  className="px-3 py-1.5 text-[12px] text-[color:var(--text)] border border-[color:var(--line-2)] rounded-md hover:bg-white/5 transition-colors">
+                  Zurücksetzen
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="px-7 py-4 bg-black/30 border-t border-[color:var(--line)] flex items-center justify-end gap-2">
+          <button onClick={onClose} className="px-3.5 py-1.5 text-[12.5px] text-[color:var(--text-dim)] hover:text-[color:var(--text)] rounded-md transition-colors">
+            Abbrechen
+          </button>
+          <button onClick={onClose}
+            className="px-3.5 py-1.5 text-[12.5px] font-medium bg-[color:var(--accent)] text-white hover:bg-[color:var(--accent-2)] rounded-md transition-colors">
+            Speichern
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BorderedField({ label, value, onChange, placeholder, rows = 3 }) {
+  return (
+    <div>
+      <label className="block text-[10.5px] uppercase tracking-[0.18em] text-[color:var(--text-mute)] mb-1.5">
+        {label}
+      </label>
+      <textarea rows={rows} value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full bg-[color:var(--bg-card)] border border-[color:var(--line-3)] rounded-lg px-3 py-2.5 text-[13.5px] leading-relaxed text-[color:var(--text)] placeholder-[color:var(--text-mute)] focus:outline-none focus:border-[color:var(--accent)]/60 transition-colors resize-none"
+      />
+    </div>
+  );
+}
+
+/* ---------- Sidebar ---------- */
+function Sidebar({ collapsed, onToggle, context, onActions }) {
+  const greet = () => {
+    const h = new Date().getHours();
+    const n = context?.profile?.name?.trim();
+    const hi = n ? `, ${n}` : "";
+    if (h >= 18 || h < 4) return `Guten Abend${hi}. Was möchtest du morgen erreichen? Sag's mir, ich plane dir den Tag.`;
+    if (h < 11) return `Guten Morgen${hi}. Was steht heute an? Ich sortiere dir den Tag.`;
+    return `Hi${hi}. Was möchtest du einplanen?`;
+  };
+  const [messages, setMessages] = useState(() => (DEMO ? DEMO_DATA.messages : [{ from: "ai", text: greet() }]));
+  const [input, setInput] = useState("");
+  const [recording, setRecording] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const listRef = useRef(null);
+  const recRef = useRef(null);
+  useEffect(() => {
+    if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
+  }, [messages, busy]);
+
+  const send = async () => {
+    const text = input.trim();
+    if (!text || busy) return;
+    const history = [...messages, { from: "user", text }];
+    setMessages(history);
+    setInput("");
+    setBusy(true);
+    try {
+      const apiMessages = history.map(m => ({ role: m.from === "user" ? "user" : "assistant", content: m.text }));
+      const now = new Date().toLocaleString("de-DE", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: apiMessages, context: { ...context, now } }),
+      });
+      const data = await res.json();
+      if (data.actions && data.actions.length && onActions) onActions(data.actions);
+      setMessages(m => [...m, { from: "ai", text: data.reply || "Ok." }]);
+    } catch (e) {
+      setMessages(m => [...m, { from: "ai", text: "Verbindung zum Server fehlgeschlagen. Läuft der Node-Server?" }]);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Mic dictation via Web Speech API (Chrome). Appends recognized text to input.
+  const toggleMic = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { setMessages(m => [...m, { from: "ai", text: "Spracheingabe wird in diesem Browser nicht unterstützt." }]); return; }
+    if (recording && recRef.current) { recRef.current.stop(); return; }
+    const rec = new SR();
+    rec.lang = "de-DE"; rec.interimResults = false; rec.continuous = false;
+    rec.onresult = (e) => {
+      const t = Array.from(e.results).map(r => r[0].transcript).join(" ");
+      setInput(prev => (prev ? prev + " " : "") + t);
+    };
+    rec.onend = () => { setRecording(false); recRef.current = null; };
+    rec.onerror = () => { setRecording(false); recRef.current = null; };
+    recRef.current = rec; setRecording(true); rec.start();
+  };
+  return (
+    <aside
+      className={`${collapsed ? "sidebar-collapsed" : ""} relative h-full bg-[color:var(--bg)] border-r border-[color:var(--line)] flex flex-col shrink-0`}
+      style={{ width: collapsed ? 56 : 260, transition: "width 280ms cubic-bezier(.4,0,.2,1)" }}>
+      <div className="flex items-center justify-between px-4 pt-5 pb-4">
+        <button onClick={onToggle}
+          className="text-[color:var(--text-dim)] hover:text-[color:var(--text)] p-1.5 rounded-md hover:bg-white/5 transition-colors"
+          aria-label="Sidebar">
+          {collapsed ? <PanelRight size={16}/> : <PanelLeft size={16}/>}
+        </button>
+      </div>
+      <div className="px-5 pb-5 sidebar-content">
+        <h1 className="text-[22px] font-semibold tracking-tight text-[color:var(--text)] leading-none">Day One</h1>
+      </div>
+      <div ref={listRef} className="flex-1 overflow-y-auto scroll-thin px-4 pb-4 space-y-2.5 sidebar-content">
+        {messages.map((m, i) => (
+          <div key={i} className={`flex ${m.from === "user" ? "justify-end" : "justify-start"}`}>
+            <div className={`max-w-[88%] px-3 py-2 rounded-xl text-[13px] leading-snug
+              ${m.from === "user"
+                ? "bg-[color:var(--accent)]/90 text-white rounded-br-sm"
+                : "bg-white/[0.03] text-[color:var(--text)] rounded-bl-sm border border-[color:var(--line)]"}`}>
+              {m.text}
+            </div>
+          </div>
+        ))}
+        {busy && (
+          <div className="flex justify-start">
+            <div className="px-3 py-2 rounded-xl rounded-bl-sm bg-white/[0.03] border border-[color:var(--line)]">
+              <span className="typing"><span/><span/><span/></span>
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="px-4 pb-5 pt-2 sidebar-content">
+        <div className="flex items-center gap-1.5 w-full bg-white/[0.04] border border-[color:var(--line-2)] rounded-xl p-1.5 focus-within:border-[color:var(--line-3)] transition-colors">
+          <textarea rows={1} value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+            placeholder="Nachricht …"
+            className="flex-1 min-w-0 bg-transparent resize-none outline-none text-[14px] leading-5 text-[color:var(--text)] placeholder-[color:var(--text-mute)] py-1 px-2 max-h-24"/>
+          <button onClick={toggleMic}
+            className={`relative w-8 h-8 shrink-0 grid place-items-center rounded-lg transition-colors
+              ${recording
+                ? "mic-recording bg-[color:var(--accent)]/15 text-[color:var(--accent-2)]"
+                : "text-[color:var(--text-dim)] hover:text-[color:var(--text)] hover:bg-white/5"}`}
+            aria-label="Diktieren">
+            <MicIco size={15} />
+          </button>
+          <button onClick={send} disabled={!input.trim() || busy}
+            className="w-8 h-8 shrink-0 grid place-items-center rounded-lg bg-[color:var(--accent)] text-white disabled:bg-white/5 disabled:text-[color:var(--text-mute)] hover:bg-[color:var(--accent-2)] transition-colors"
+            aria-label="Senden">
+            <ArrowUp size={15} stroke={2}/>
+          </button>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+/* ---------- Toolbar button ---------- */
+function ToolBtn({ active, onClick, ariaLabel, title, children }) {
+  return (
+    <button onClick={onClick} aria-label={ariaLabel} title={title}
+      className={`w-9 h-9 grid place-items-center rounded-md border transition-colors
+        ${active
+          ? "border-[color:var(--line-2)] bg-white/[0.04] text-[color:var(--text)]"
+          : "border-[color:var(--line)] text-[color:var(--text-dim)] hover:text-[color:var(--text)] hover:border-[color:var(--line-2)]"}`}>
+      {children}
+    </button>
+  );
+}
+
+/* ---------- Loading splash (handwriting "Day One") ---------- */
+function LoadingSplash({ fading }) {
+  return (
+    <div className={`splash ${fading ? "fade" : ""}`}>
+      <svg width="320" height="96" viewBox="0 0 320 96" aria-label="Day One">
+        <text className="hw-text" x="50%" y="58%" textAnchor="middle" dominantBaseline="middle"
+              fontFamily="Inter, system-ui, sans-serif" fontSize="58" fontWeight="600"
+              style={{ letterSpacing: "-0.02em" }}>
+          Day One
+        </text>
+      </svg>
+      <div className="splash-sub">dein Tag, sortiert</div>
+    </div>
+  );
+}
+
+/* ---------- App ---------- */
+const GridLayout = window.ReactGridLayout;
+// WidthProvider: grid auto-sizes to its container width (fills the page, less side margin).
+const ResponsiveGrid = GridLayout.WidthProvider(GridLayout);
+
+// Free-snap grid config. 12 columns; width is measured from the container.
+const CANVAS_MAX = 1360;      // max content width (px) — wider than before, less side gap
+const GRID_COLS  = 12;
+const ROW_H      = 30;
+const GRID_MARGIN = [14, 14];
+const LAYOUT_KEY = 'dayone-layout-v3';
+
+// Default grid placement (x/y/w/h in grid units). "todo" is a static anchor
+// in the center; everything else drags, resizes and auto-compacts around it.
+const DEFAULT_GRID = {
+  notes:     { x: 0, y: 0,  w: 4, h: 7,  minW: 3, minH: 4 },
+  spotify:   { x: 0, y: 7,  w: 4, h: 5,  minW: 3, minH: 4 },
+  todo:      { x: 4, y: 0,  w: 5, h: 13, minW: 4, minH: 6, static: true },
+  tagesziel: { x: 9, y: 0,  w: 3, h: 6,  minW: 3, minH: 5 },
+  verlauf:   { x: 9, y: 6,  w: 3, h: 5,  minW: 3, minH: 4 },
+  ki:        { x: 0, y: 13, w: 12, h: 5, minW: 4, minH: 4 },
+};
+const WIDGET_IDS = ["notes", "spotify", "tagesziel", "verlauf", "ki"]; // toggleable (todo always shown)
+const cloneGrid = (g) => JSON.parse(JSON.stringify(g));
+
+// Persisted app data (todos / notes / profile / history)
+const DATA_KEY = 'dayone-data-v2';
+const timeToMin = (t) => { const [h, m] = String(t).split(":").map(Number); return (h || 0) * 60 + (m || 0); };
+const dateKey = (d = new Date()) => {
+  const x = new Date(d); x.setMinutes(x.getMinutes() - x.getTimezoneOffset());
+  return x.toISOString().slice(0, 10);
+};
+// Clean start: no demo tasks. The user fills the day themselves or via the AI.
+const DEFAULT_TODOS = [];
+
+// Demo mode (?demo in URL): fills the app with realistic sample data for screenshots.
+// Nothing is persisted while in demo mode.
+const DEMO = typeof location !== "undefined" && new URLSearchParams(location.search).has("demo");
+function buildDemoData() {
+  const today = new Date();
+  const history = {};
+  const pcts = [0.55, 0.85, 0.40, 0.95, 1.0, 0.70, 0.29];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today); d.setDate(today.getDate() - (6 - i));
+    history[dateKey(d)] = pcts[i];
+  }
+  return {
+    profile: {
+      name: "Aaron",
+      about: "27, lebe in Berlin. Baue Day One.",
+      goals: "Halbmarathon im Herbst.\nMVP launchen.",
+      routines: "07:00 Sport\n08:00 Journal\n22:30 Lesen",
+    },
+    notes: "Heute: ruhiger Vormittag.\nDeep Work bis Mittag schützen.",
+    todos: [
+      { time: "07:00", duration: "45 min", title: "Morgensport",         note: "5 km easy. Puls unter 145.", done: true,  doneAt: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 7, 12).toISOString() },
+      { time: "08:30", duration: "30 min", title: "Journal",             note: "Drei Sätze, drei Ziele.", done: true,  doneAt: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 8, 40).toISOString() },
+      { time: "10:00", duration: "2 h",    title: "Deep Work — Q3 Deck", note: "Slides 7 – 12. Sprechernotizen.", done: false },
+      { time: "13:30", duration: "30 min", title: "Mittag mit Lena",     note: "Kurz raus. Kein Laptop.", done: false },
+      { time: "15:30", duration: "45 min", title: "Sprint Review",       note: "Demo der neuen Timeline.", done: false },
+      { time: "17:30", duration: "20 min", title: "Steuerbelege Mai",    note: "Quittungen scannen.", done: false },
+      { time: "21:30", duration: "30 min", title: "Lesen",               note: "Deep Work — Kapitel 4.", done: false },
+    ],
+    history,
+    observation: "Morgens bist du stark — Sport und Journal liefen pünktlich. Nachmittags lässt der Fokus nach: Sprint Review hast du zuletzt oft verschoben. Versuch, den Q3-Block früher zu starten und den Nachmittag leichter zu halten.",
+    messages: [
+      { from: "ai", text: "Guten Abend, Aaron. Dein Tag ist geplant." },
+      { from: "user", text: "Verschieb das Sprint Review auf 15:30." },
+      { from: "ai", text: "Erledigt — Sprint Review liegt jetzt um 15:30." },
+    ],
+  };
+}
+const DEMO_DATA = DEMO ? buildDemoData() : null;
+
+function App() {
+  const [collapsed, setCollapsed] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);
+  const [editId, setEditId] = useState(null);
+  const [showGrid, setShowGrid] = useState(false);
+
+  // Loading splash: handwriting "Day One" → fade → app.
+  const [loading, setLoading] = useState(true);
+  const [splashFade, setSplashFade] = useState(false);
+  useEffect(() => {
+    const t1 = setTimeout(() => setSplashFade(true), 2000);
+    const t2 = setTimeout(() => setLoading(false), 2550);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, []);
+
+  // Measure grid container width to draw the snap-raster overlay aligned to RGL cells.
+  const gridWrapRef = useRef(null);
+  const [gridW, setGridW] = useState(CANVAS_MAX);
+  useLayoutEffect(() => {
+    const measure = () => {
+      if (gridWrapRef.current) {
+        const w = gridWrapRef.current.getBoundingClientRect().width;
+        if (w) setGridW(w);
+      }
+    };
+    measure();
+    // Tailwind (CDN) applies utility classes async, so width settles a tick later.
+    const timers = [0, 80, 200, 500].map(d => setTimeout(measure, d));
+    window.addEventListener("resize", measure);
+    return () => { timers.forEach(clearTimeout); window.removeEventListener("resize", measure); };
+  }, [collapsed]);
+  // RGL column pitch including margin: lines align to where cells start.
+  const cellW = (gridW - GRID_MARGIN[0] * (GRID_COLS + 1)) / GRID_COLS + GRID_MARGIN[0];
+
+  // Load persisted layout (grid positions + visibility) once.
+  const persisted = (() => {
+    try {
+      const raw = localStorage.getItem(LAYOUT_KEY);
+      if (!raw) return null;
+      const p = JSON.parse(raw);
+      return (p && typeof p === 'object') ? p : null;
+    } catch { return null; }
+  })();
+
+  // gridPos: id -> {x,y,w,h,minW,minH,static}. Holds positions for ALL widgets
+  // (even hidden ones) so re-adding a widget restores its spot.
+  const [gridPos, setGridPos] = useState(() => {
+    const base = cloneGrid(DEFAULT_GRID);
+    if (persisted?.gridPos) {
+      Object.keys(base).forEach(k => {
+        if (persisted.gridPos[k]) base[k] = { ...base[k], ...persisted.gridPos[k], static: base[k].static };
+      });
+    }
+    return base;
+  });
+  const [visible, setVisible] = useState(persisted?.visible || {
+    notes: true, spotify: true, tagesziel: true, verlauf: true, ki: true
+  });
+
+  useEffect(() => {
+    if (DEMO) return;
+    try { localStorage.setItem(LAYOUT_KEY, JSON.stringify({ gridPos, visible })); } catch {}
+  }, [gridPos, visible]);
+
+  const resetLayout = () => {
+    try { localStorage.removeItem(LAYOUT_KEY); } catch {}
+    setGridPos(cloneGrid(DEFAULT_GRID));
+    setVisible({ notes: true, spotify: true, tagesziel: true, verlauf: true, ki: true });
+  };
+
+  // Build the layout array RGL consumes: todo (always) + visible widgets.
+  const layout = useMemo(() => {
+    const ids = ["todo", ...WIDGET_IDS.filter(k => visible[k])];
+    return ids.map(id => ({ i: id, ...gridPos[id] }));
+  }, [gridPos, visible]);
+
+  const onLayoutChange = useCallback((next) => {
+    setGridPos(prev => {
+      const updated = { ...prev };
+      next.forEach(item => {
+        if (!updated[item.i]) return;
+        updated[item.i] = { ...updated[item.i], x: item.x, y: item.y, w: item.w, h: item.h };
+      });
+      return updated;
+    });
+  }, []);
+
+  const toggleWidget = (k) => setVisible(s => ({ ...s, [k]: !s[k] }));
+  const hide = (k) => setVisible(s => ({ ...s, [k]: false }));
+
+  // --- Persisted app data (todos / notes / profile) ---
+  const savedData = (() => {
+    try { const r = localStorage.getItem(DATA_KEY); return r ? JSON.parse(r) : null; } catch { return null; }
+  })();
+  const [notes, setNotes] = useState(DEMO ? DEMO_DATA.notes : (savedData?.notes ?? ""));
+  const [profile, setProfile] = useState(DEMO ? DEMO_DATA.profile : (savedData?.profile ?? { name: "", about: "", goals: "", routines: "" }));
+  // New day → start with an empty list (you plan each day fresh). Otherwise load
+  // saved tasks, re-keyed with fresh unique ids (self-heals duplicate-id data).
+  const isNewDay = savedData?.day && savedData.day !== dateKey();
+  const [todos, setTodos] = useState(() =>
+    DEMO ? DEMO_DATA.todos.map((t, i) => ({ ...t, id: i + 1 }))
+    : (isNewDay || !Array.isArray(savedData?.todos)) ? []
+    : savedData.todos.map((t, i) => ({ ...t, id: i + 1 }))
+  );
+  const [dayStamp, setDayStamp] = useState(dateKey());
+  // Real daily completion history for the Verlauf widget: { "YYYY-MM-DD": pct }
+  const [history, setHistory] = useState(DEMO ? DEMO_DATA.history : (savedData?.history ?? {}));
+
+  // Reset the list at midnight (and whenever the day rolls over while open).
+  const resetForNewDay = useCallback(() => {
+    if (DEMO) return;
+    setTodos([]); setExpandedId(null); setEditId(null); setDayStamp(dateKey());
+  }, []);
+  useEffect(() => {
+    const now = new Date();
+    const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+    const t = setTimeout(resetForNewDay, nextMidnight - now);
+    return () => clearTimeout(t);
+  }, [dayStamp, resetForNewDay]);
+  // Latest KI-Beobachtung text — fed back into chat so suggestions adapt over time.
+  const [observation, setObservation] = useState(() => {
+    if (DEMO) return DEMO_DATA.observation;
+    try { return JSON.parse(localStorage.getItem("dayone-observation-v1") || "null")?.text || ""; } catch { return ""; }
+  });
+
+  // Save data whenever it changes (day stamp lets us detect a new day on next load).
+  // Demo mode never persists.
+  useEffect(() => {
+    if (DEMO) return;
+    try { localStorage.setItem(DATA_KEY, JSON.stringify({ todos, notes, profile, history, day: dayStamp })); } catch {}
+  }, [todos, notes, profile, history, dayStamp]);
+
+  // Sort by time so inserted tasks land in the right slot
+  const sortByTime = (list) => [...list].sort((a, b) => timeToMin(a.time) - timeToMin(b.time));
+  // Monotonic id counter — guarantees unique ids even for several adds in one tick.
+  // Initialised past the highest re-keyed id (= number of loaded tasks).
+  const idRef = useRef(Array.isArray(savedData?.todos) ? savedData.todos.length : DEFAULT_TODOS.length);
+  const nextTodoId = () => (idRef.current += 1);
+
+  const addTask = ({ time = "12:00", title = "Neue Aufgabe", duration = "", note = "" } = {}) => {
+    const t = { id: nextTodoId(), time, title, duration, note, done: false };
+    setTodos(ts => sortByTime([...ts, t]));
+    return t.id;
+  };
+  const updateTask = (id, patch) =>
+    setTodos(ts => sortByTime(ts.map(t => t.id === id ? { ...t, ...patch } : t)));
+
+  // "+ Aufgabe": create a blank task at the next half hour and open it in edit mode.
+  const handleAddTask = () => {
+    const now = new Date();
+    const half = now.getMinutes() < 30;
+    const h = (half ? now.getHours() : now.getHours() + 1) % 24;
+    const time = `${String(h).padStart(2, "0")}:${half ? "30" : "00"}`;
+    const id = addTask({ time, title: "" });
+    setExpandedId(id);
+    setEditId(id);
+  };
+
+  useEffect(() => {
+    if (expandedId == null) return;
+    const onKey = (e) => { if (e.key === "Escape") setExpandedId(null); };
+    const onClick = (e) => {
+      if (!e.target.closest?.(".task-box.expanded")) setExpandedId(null);
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onClick);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onClick);
+    };
+  }, [expandedId]);
+
+  // Live clock — drives the "now" line and the active-task highlight.
+  const [nowMin, setNowMin] = useState(() => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); });
+  useEffect(() => {
+    const tick = () => { const d = new Date(); setNowMin(d.getHours() * 60 + d.getMinutes()); };
+    const id = setInterval(tick, 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Tasks sorted by time (loaded data may be unsorted).
+  const sortedTodos = useMemo(() => sortByTime(todos), [todos]);
+
+  // Index where the "now" line sits among the sorted tasks.
+  const nowInsertIdx = useMemo(() => {
+    const i = sortedTodos.findIndex(t => timeToMin(t.time) > nowMin);
+    return i === -1 ? sortedTodos.length : i;
+  }, [sortedTodos, nowMin]);
+
+  const nowId = useMemo(() => {
+    let active = null;
+    for (const t of sortedTodos) {
+      if (t.done) continue;
+      if (nowMin >= timeToMin(t.time)) active = t.id;
+    }
+    return active;
+  }, [sortedTodos, nowMin]);
+
+  const dateString = useMemo(() => {
+    const d = new Date();
+    return d.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
+  }, []);
+
+  const greeting = useMemo(() => {
+    const h = new Date().getHours();
+    if (h < 5)  return "Noch wach";
+    if (h < 11) return "Guten Morgen";
+    if (h < 17) return "Guten Tag";
+    if (h < 22) return "Guten Abend";
+    return "Späte Stunde";
+  }, []);
+
+  const toggle = (id) => setTodos(ts => ts.map(t => t.id === id
+    ? { ...t, done: !t.done, doneAt: !t.done ? new Date().toISOString() : null }
+    : t));
+  const remove = (id) => { setTodos(ts => ts.filter(t => t.id !== id)); setExpandedId(null); };
+  // Cancelling the editor on a still-empty (just-added) task removes it again.
+  const cancelEdit = (id) => {
+    setEditId(null);
+    setTodos(ts => ts.filter(t => !(t.id === id && !String(t.title || "").trim())));
+    setExpandedId(null);
+  };
+
+  // Apply tool actions returned by the AI assistant.
+  const applyChatActions = useCallback((actions = []) => {
+    actions.forEach(a => {
+      const ar = a.args || {};
+      if (a.name === "add_task") addTask({ time: ar.time, title: ar.title, duration: ar.duration || "", note: ar.note || "" });
+      else if (a.name === "toggle_task") setTodos(ts => ts.map(t => t.id === ar.id ? { ...t, done: !!ar.done } : t));
+      else if (a.name === "delete_task") setTodos(ts => ts.filter(t => t.id !== ar.id));
+      else if (a.name === "set_note") setNotes(ar.text || "");
+    });
+  }, []);
+
+  const total = todos.length;
+  const done = todos.filter(t => t.done).length;
+
+  // Log today's completion ratio into history (drives the Verlauf widget).
+  useEffect(() => {
+    const today = dateKey();
+    const pct = total ? done / total : 0;
+    setHistory(h => (h[today] === pct ? h : { ...h, [today]: pct }));
+  }, [done, total]);
+
+  // Last 7 days for the Verlauf graph, from real history.
+  const verlaufDays = useMemo(() => {
+    const out = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      const key = dateKey(d);
+      out.push({
+        wd: d.toLocaleDateString("de-DE", { weekday: "narrow" }),
+        p: history[key] ?? 0,
+        has: key in history,
+      });
+    }
+    return out;
+  }, [history]);
+
+  return (
+    <div className="h-full w-full flex">
+      {loading && <LoadingSplash fading={splashFade} />}
+      <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(c => !c)}
+               context={{ todos, notes, profile, history, observation }} onActions={applyChatActions} />
+
+      <main className="flex-1 h-full overflow-y-auto scroll-thin">
+        <div className="mx-auto pt-10 pb-20 px-8" style={{ width: "100%", maxWidth: CANVAS_MAX }}>
+
+          {/* Header */}
+          <div className="flex items-start justify-between mb-6">
+            <div className="min-w-0">
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="text-[11px] uppercase tracking-[0.2em] text-[color:var(--text-mute)]">
+                  {dateString}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <ToolBtn active={visible.notes} onClick={() => toggleWidget("notes")}
+                           ariaLabel="Notizen" title="Notizen">
+                    <NoteIco size={14}/>
+                  </ToolBtn>
+                  <ToolBtn active={visible.tagesziel} onClick={() => toggleWidget("tagesziel")}
+                           ariaLabel="Tagesziel" title="Tagesziel">
+                    <TargetIco size={14}/>
+                  </ToolBtn>
+                  <ToolBtn active={visible.verlauf} onClick={() => toggleWidget("verlauf")}
+                           ariaLabel="Verlauf" title="Verlauf">
+                    <TrendIco size={14}/>
+                  </ToolBtn>
+                  <ToolBtn active={visible.spotify} onClick={() => toggleWidget("spotify")}
+                           ariaLabel="Musik" title="Musik">
+                    <MusicIco size={14}/>
+                  </ToolBtn>
+                  <ToolBtn active={visible.ki} onClick={() => toggleWidget("ki")}
+                           ariaLabel="KI-Beobachtung" title="KI-Beobachtung">
+                    <EyeIco size={14}/>
+                  </ToolBtn>
+                  <span className="w-px h-5 bg-[color:var(--line)] mx-1" />
+                  <ToolBtn onClick={resetLayout}
+                           ariaLabel="Layout zurücksetzen" title="Layout zurücksetzen">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+                      <path d="M3 3v5h5" />
+                    </svg>
+                  </ToolBtn>
+                </div>
+              </div>
+              <h1 className="text-[36px] font-semibold tracking-tight text-[color:var(--text)] leading-[1.05] mt-3">
+                {profile.name?.trim() ? `${greeting}, ${profile.name.trim()}.` : `${greeting}.`}
+              </h1>
+            </div>
+            <button onClick={() => setModalOpen(true)}
+              className="shrink-0 flex items-center gap-2 pl-1 pr-3 py-1 rounded-full border border-[color:var(--line)] hover:border-[color:var(--line-2)] text-[color:var(--text-dim)] hover:text-[color:var(--text)] text-[12.5px] transition-colors">
+              <span className="w-6 h-6 rounded-full bg-white/[0.04] border border-[color:var(--line)] flex items-center justify-center">
+                <UserIco size={11}/>
+              </span>
+              Personal
+            </button>
+          </div>
+
+          {/* Single continuous orange progress line */}
+          <div className="w-full h-[2px] rounded-full bg-[color:var(--accent)] opacity-90 mb-10"
+               style={{ boxShadow: "0 0 8px rgba(217,122,74,0.4)" }} />
+
+          {/* Canvas: free-snap grid (drag anywhere, snaps to the invisible raster) */}
+          <div ref={gridWrapRef}
+               className={`grid-wrap ${showGrid ? "show-grid" : ""}`}
+               style={{ "--cell-w": cellW + "px", "--cell-h": (ROW_H + GRID_MARGIN[1]) + "px" }}>
+          <ResponsiveGrid
+            className="layout"
+            cols={GRID_COLS}
+            rowHeight={ROW_H}
+            margin={GRID_MARGIN}
+            layout={layout}
+            onLayoutChange={onLayoutChange}
+            draggableHandle=".widget-title"
+            draggableCancel=".no-drag"
+            resizeHandles={['s','e','n','w','se','sw','ne','nw']}
+            compactType="vertical"
+            preventCollision={false}
+            isBounded={false}>
+
+            {/* Timeline — static anchor in the center */}
+            <div key="todo" className="todo-cell">
+              <div className="heute-label">Heute</div>
+              <div className="todo-scroll scroll-thin">
+                {sortedTodos.map((t, i) => (
+                  <React.Fragment key={t.id}>
+                    {i === nowInsertIdx && <NowMarker min={nowMin} />}
+                    <TodoRow
+                      todo={t} idx={i} isNow={t.id === nowId}
+                      expanded={expandedId === t.id}
+                      startEditing={editId === t.id}
+                      onExpand={(id) => setExpandedId(id)}
+                      onCollapse={() => setExpandedId(null)}
+                      onToggle={toggle} onDelete={remove} onUpdate={updateTask} onCancel={cancelEdit}
+                    />
+                  </React.Fragment>
+                ))}
+                {nowInsertIdx >= sortedTodos.length && <NowMarker min={nowMin} />}
+                <div className="grid items-start" style={{ gridTemplateColumns: "54px 18px 1fr" }}>
+                  <div />
+                  <div className="relative flex justify-center pt-2.5">
+                    <span className="relative z-10 w-[7px] h-[7px] rounded-full border border-dashed border-[rgba(255,255,255,0.18)] bg-[color:var(--bg)]" />
+                  </div>
+                  <button onClick={handleAddTask}
+                    className="text-left w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] text-[color:var(--text-mute)] hover:text-[color:var(--text)] hover:bg-white/[0.02] transition-colors">
+                    <PlusIco size={13}/> Aufgabe
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {visible.notes && (
+              <div key="notes">
+                <NotesWidget value={notes} setValue={setNotes} onDismiss={() => hide("notes")} />
+              </div>
+            )}
+            {visible.spotify && (
+              <div key="spotify">
+                <SpotifyWidget onDismiss={() => hide("spotify")} />
+              </div>
+            )}
+            {visible.tagesziel && (
+              <div key="tagesziel">
+                <TageszielWidget done={done} total={total} onDismiss={() => hide("tagesziel")} />
+              </div>
+            )}
+            {visible.verlauf && (
+              <div key="verlauf">
+                <VerlaufWidget days={verlaufDays} onDismiss={() => hide("verlauf")} />
+              </div>
+            )}
+            {visible.ki && (
+              <div key="ki">
+                <KIObservationWidget data={{ todos, notes, profile, history, observation }}
+                                     onObservation={setObservation} onDismiss={() => hide("ki")} />
+              </div>
+            )}
+          </ResponsiveGrid>
+          </div>
+
+        </div>
+      </main>
+
+      <PersonalModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        profile={profile}
+        setProfile={setProfile}
+        onResetLayout={resetLayout}
+        showGrid={showGrid}
+        setShowGrid={setShowGrid}
+      />
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
