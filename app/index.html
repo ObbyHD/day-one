@@ -441,7 +441,7 @@ function TodoRow({ todo, idx, isNow, expanded, startEditing, onExpand, onCollaps
     onUpdate(todo.id, { time: draft.time || "12:00", title: draft.title.trim() || "Aufgabe", duration: draft.duration, note: draft.note });
     setEditing(false);
   };
-  const handleDouble = (e) => {
+  const handleToggleExpand = (e) => {
     e.stopPropagation();
     if (expanded) onCollapse(); else onExpand(todo.id);
   };
@@ -463,9 +463,9 @@ function TodoRow({ todo, idx, isNow, expanded, startEditing, onExpand, onCollaps
         }`} />
       </div>
       <div className="pb-2.5">
-        <div onDoubleClick={handleDouble}
-          className={`task-box ${expanded ? "expanded" : ""} relative pl-3 pr-3 py-2.5 rounded-lg border border-transparent hover:border-[color:var(--line)] cursor-default select-none`}
-          aria-expanded={expanded} title="Doppelklick für Details">
+        <div onClick={handleToggleExpand}
+          className={`task-box ${expanded ? "expanded" : ""} relative pl-3 pr-3 py-2.5 rounded-lg border border-transparent hover:border-[color:var(--line)] cursor-pointer select-none`}
+          aria-expanded={expanded} title="Klick für Details">
           <div className="flex items-center gap-3">
             <Check checked={todo.done} onToggle={() => onToggle(todo.id)} />
             <span className={`todo-text flex-1 min-w-0 truncate text-[14px] leading-snug ${todo.done ? "done" : "text-[color:var(--text)]"}`}>

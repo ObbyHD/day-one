@@ -46,6 +46,7 @@ loadEnv();
 const OPENAI_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_BASE = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
 const MODEL = process.env.OPENAI_MODEL || "gpt-4o";
+const TRANSCRIBE_MODEL = process.env.TRANSCRIBE_MODEL || "gpt-4o-transcribe";
 const JAMENDO_ID = process.env.JAMENDO_CLIENT_ID || "";
 
 // Fallback playlist (royalty-free) used when no Jamendo key is set.
@@ -151,6 +152,12 @@ function systemPrompt(context) {
     "- Berücksichtige die schon vorhandenen Aufgaben und die Routinen aus dem Profil. Vermeide Zeit-Überschneidungen. Plane Pausen/Puffer wenn sinnvoll.",
     "- Begründe deine Wahl in EINEM kurzen Satz (z. B. „Vormittags bist du fokussierter, daher der Deep-Work-Block früh.“).",
     "- Fehlt eine Angabe (Dauer, ungefähre Zeit), triff eine vernünftige Annahme statt nachzufragen — nur bei echter Unklarheit eine kurze Rückfrage.",
+    "",
+    "DENK MIT — Sprache deuten statt wörtlich nehmen:",
+    "- Die Eingabe kommt oft per Spracherkennung und kann Verhörer enthalten. Schließe aus dem Kontext auf das WIRKLICH Gemeinte (z. B. „Dodo üben“ → wahrscheinlich „Solo üben“; „Karte gehen“ → „Karten gehen“/Sport).",
+    "- Nutze Profil, Ziele, Routinen und bisherige Aufgaben als Kontext, um Wortzusammenhänge zu verstehen und logisch zu schlussfolgern.",
+    "- Bei unsicherer Deutung: wähle die plausibelste Variante UND weise in einem kurzen Halbsatz darauf hin (z. B. „Ich nehme an, du meinst Solo üben — sag Bescheid, falls nicht.“).",
+    "- Denke einen Schritt weiter: erkenne Abhängigkeiten und sinnvolle Reihenfolgen (z. B. Aufwärmen vor Sport, Einkaufen vor Kochen).",
     "",
     "WICHTIG — Änderungen IMMER über die Tools ausführen:",
     "- Jede Planänderung MUSS per Tool passieren: add_task (mit time, title, möglichst duration), toggle_task, delete_task, set_note.",
@@ -323,24 +330,33 @@ async function handleTranscribe(req, res) {
     const audioBuffer = Buffer.from(audio, "base64");
     const ext = mimeType.includes("ogg") ? "ogg" : mimeType.includes("mp4") ? "mp4" : "webm";
     const filename = `audio.${ext}`;
+    const PROMPT = "Tagesplanung auf Deutsch. Häufige Wörter: Aufgabe, Termin, Uhr, Minuten, " +
+      "Sport, Solo üben, Gitarre, Lernen, Meeting, Pause, einplanen, erledigen, verschieben.";
 
-    // FormData/Blob sind in Node 18+ (Electron) global verfügbar — undici setzt
-    // den Multipart-Boundary korrekt, robuster als manuell.
-    const form = new FormData();
-    form.append("file", new Blob([audioBuffer], { type: mimeType }), filename);
-    form.append("model", "whisper-1");
-    form.append("language", "de");
+    // Ein Transkriptions-Versuch mit gegebenem Modell.
+    const tryModel = async (model) => {
+      const form = new FormData();
+      form.append("file", new Blob([audioBuffer], { type: mimeType }), filename);
+      form.append("model", model);
+      form.append("language", "de");
+      form.append("prompt", PROMPT);
+      return fetch(`${OPENAI_BASE}/audio/transcriptions`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${OPENAI_KEY}` },
+        body: form,
+      });
+    };
 
-    const apiRes = await fetch(`${OPENAI_BASE}/audio/transcriptions`, {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${OPENAI_KEY}` },
-      body: form,
-    });
+    // Erst gpt-4o-transcribe (genauer), bei Fehler Fallback auf whisper-1.
+    let apiRes = await tryModel(TRANSCRIBE_MODEL);
+    if (!apiRes.ok && TRANSCRIBE_MODEL !== "whisper-1") {
+      apiRes = await tryModel("whisper-1");
+    }
 
     if (!apiRes.ok) {
       const t = await apiRes.text();
       res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ text: "", error: `Whisper ${apiRes.status}: ${t.slice(0, 200)}` }));
+      return res.end(JSON.stringify({ text: "", error: `Transcribe ${apiRes.status}: ${t.slice(0, 200)}` }));
     }
     const data = await apiRes.json();
     res.writeHead(200, { "Content-Type": "application/json" });
