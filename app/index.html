@@ -1212,12 +1212,16 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
   const sidebarWidthRef = useRef(sidebarWidth);
   useEffect(() => { sidebarWidthRef.current = sidebarWidth; }, [sidebarWidth]);
 
-  // Textfeld automatisch nach oben wachsen lassen
+  // Textfeld smooth nach oben wachsen lassen (bis ~45% der Fensterhöhe)
   const autoGrow = () => {
     const el = inputRef.current;
     if (!el) return;
+    const maxH = Math.round(window.innerHeight * 0.45);
+    // Höhe kurz auf auto, scrollHeight messen, dann animiert setzen
     el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 200) + "px";
+    const target = Math.min(el.scrollHeight, maxH);
+    el.style.height = target + "px";
+    el.style.overflowY = el.scrollHeight > maxH ? "auto" : "hidden";
   };
   useEffect(() => { autoGrow(); }, [input, recording, transcribing]);
 
@@ -1371,8 +1375,8 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
             placeholder={recording ? "Sprich jetzt …" : transcribing ? "Transkribiere …" : "Nachricht …"}
             disabled={recording || transcribing}
-            className="flex-1 min-w-0 self-end bg-transparent resize-none outline-none text-[14px] leading-5 text-[color:var(--text)] placeholder-[color:var(--text-mute)] py-1 px-2 scroll-thin overflow-y-auto disabled:opacity-70"
-            style={{ maxHeight: 200 }}/>
+            className="flex-1 min-w-0 self-end bg-transparent resize-none outline-none text-[14px] leading-relaxed text-[color:var(--text)] placeholder-[color:var(--text-mute)] py-1 px-2 scroll-thin"
+            style={{ height: 28, overflowY: "hidden", transition: "height .18s cubic-bezier(.22,1,.36,1)" }}/>
           <div ref={micMenuRef} className="relative shrink-0 flex items-center">
             {/* Chevron: Mikrofon auswählen (vor der Aufnahme) */}
             <button onClick={() => { loadMicDevices(); setShowMicMenu(v => !v); }}
