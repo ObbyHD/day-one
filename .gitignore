@@ -3,3 +3,5 @@ node_modules/
 *.log
 .claude/
 Claude design/
+dist/
+build-output/

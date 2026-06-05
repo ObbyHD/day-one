@@ -6,7 +6,8 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder --win",
-    "build:dir": "electron-builder --win --dir"
+    "build:dir": "electron-builder --win --dir",
+    "release": "electron-builder --win --publish always"
   },
   "build": {
     "appId": "com.dayone.app",
@@ -14,10 +15,19 @@
     "asar": true,
     "files": [
       "main.js",
+      "preload.js",
+      "updater.html",
       "server/**/*",
       "app/**/*",
       "assets/**/*",
       ".env.example"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ObbyHD",
+        "repo": "day-one"
+      }
     ],
     "win": {
       "target": [
@@ -38,5 +48,8 @@
   "devDependencies": {
     "electron": "^28.3.3",
     "electron-builder": "^24.13.3"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
   }
 }

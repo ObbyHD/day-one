@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<title>Day One – Installer</title>
+<style>
+  :root {
+    --bg: #111111; --bg-soft: #161616; --bg-card: #181818;
+    --line: rgba(255,255,255,0.08); --line-2: rgba(255,255,255,0.14);
+    --text: #ece8e2; --text-dim: rgba(236,232,226,0.55); --text-mute: rgba(236,232,226,0.32);
+    --accent: #d97a4a; --accent-2: #e89066; --green: #6f9e6a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg); color: var(--text);
+    display: flex; flex-direction: column;
+    -webkit-font-smoothing: antialiased; user-select: none;
+    overflow: hidden;
+  }
+  .titlebar {
+    -webkit-app-region: drag;
+    height: 38px; display: flex; align-items: center;
+    padding: 0 16px; font-size: 12px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--text-mute);
+    border-bottom: 1px solid var(--line);
+  }
+  .wrap { flex: 1; display: flex; flex-direction: column; padding: 28px 32px 24px; }
+  h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
+  .sub { color: var(--text-dim); font-size: 13px; margin-top: 6px; }
+  .version { color: var(--text-mute); font-size: 12px; margin-top: 4px; }
+
+  .cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-top: 28px; }
+  .card {
+    -webkit-app-region: no-drag;
+    background: var(--bg-card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 20px 16px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    text-align: center; transition: border-color .18s ease, background .18s ease, transform .12s ease;
+  }
+  .card:hover { border-color: var(--line-2); background: #1d1d1d; }
+  .card:active { transform: translateY(1px); }
+  .card .ico { width: 34px; height: 34px; }
+  .card .t { font-size: 14px; font-weight: 600; }
+  .card .d { font-size: 11.5px; color: var(--text-dim); line-height: 1.4; }
+  .card.primary { border-color: rgba(217,122,74,0.4); }
+  .card.primary:hover { border-color: var(--accent); background: rgba(217,122,74,0.08); }
+
+  .status {
+    margin-top: auto; padding-top: 20px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .bar {
+    height: 6px; width: 100%; background: rgba(255,255,255,0.06);
+    border-radius: 4px; overflow: hidden; display: none;
+  }
+  .bar.show { display: block; }
+  .bar > i { display: block; height: 100%; width: 0%; background: var(--accent);
+             border-radius: 4px; transition: width .2s ease; }
+  .msg { font-size: 12.5px; color: var(--text-dim); min-height: 18px; }
+  .msg.ok { color: var(--green); }
+  .msg.err { color: var(--accent-2); }
+  .spin {
+    display: inline-block; width: 11px; height: 11px; margin-right: 6px;
+    border: 2px solid rgba(255,255,255,0.2); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -1px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .ico path, .ico circle, .ico polyline, .ico line { stroke: var(--accent); stroke-width: 1.7;
+    fill: none; stroke-linecap: round; stroke-linejoin: round; }
+</style>
+</head>
+<body>
+  <div class="titlebar">Day One · Installer</div>
+  <div class="wrap">
+    <h1>Day One</h1>
+    <div class="sub">Wähle eine Aktion.</div>
+    <div class="version" id="ver">Version …</div>
+
+    <div class="cards">
+      <!-- Aktualisieren -->
+      <div class="card" id="btn-update">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg>
+        <div class="t">Aktualisieren</div>
+        <div class="d">Sucht die neueste Version auf GitHub und lädt sie.</div>
+      </div>
+      <!-- Reparieren -->
+      <div class="card" id="btn-repair">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4l-6 6 2.7 2.7 6-6a4 4 0 0 0 5.4-5.4l-2.3 2.3-2.7-2.7Z"/></svg>
+        <div class="t">Reparieren</div>
+        <div class="d">Installiert die aktuelle Version sauber neu.</div>
+      </div>
+      <!-- Installieren -->
+      <div class="card primary" id="btn-install">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><path d="M5 21h14"/></svg>
+        <div class="t">Installieren</div>
+        <div class="d">Übernimmt das Update und startet Day One neu.</div>
+      </div>
+    </div>
+
+    <div class="status">
+      <div class="bar" id="bar"><i id="barfill"></i></div>
+      <div class="msg" id="msg"></div>
+    </div>
+  </div>
+
+<script>
+  const msg = document.getElementById('msg');
+  const bar = document.getElementById('bar');
+  const barfill = document.getElementById('barfill');
+  const ver = document.getElementById('ver');
+
+  function setMsg(text, cls = '', spin = false) {
+    msg.className = 'msg ' + cls;
+    msg.innerHTML = (spin ? '<span class="spin"></span>' : '') + text;
+  }
+  function setBar(pct) {
+    if (pct == null) { bar.classList.remove('show'); return; }
+    bar.classList.add('show'); barfill.style.width = Math.round(pct) + '%';
+  }
+
+  (async () => {
+    try { ver.textContent = 'Version ' + await window.dayone.getVersion(); } catch {}
+  })();
+
+  // Status-Updates vom Main-Prozess
+  window.dayone.onStatus((s) => {
+    if (s.type === 'checking')   setMsg('Suche nach Updates …', '', true);
+    else if (s.type === 'available') setMsg('Update gefunden: v' + s.version + ' — wird geladen …', '', true);
+    else if (s.type === 'none')   setMsg('Du hast bereits die neueste Version.', 'ok');
+    else if (s.type === 'progress') { setBar(s.percent); setMsg('Lädt … ' + Math.round(s.percent) + '%', '', true); }
+    else if (s.type === 'downloaded') { setBar(100); setMsg('Update bereit. Klicke „Installieren“.', 'ok'); }
+    else if (s.type === 'installing') setMsg('Installiere und starte neu …', '', true);
+    else if (s.type === 'error')  { setBar(null); setMsg('Fehler: ' + s.message, 'err'); }
+  });
+
+  document.getElementById('btn-update').onclick = async () => {
+    setBar(null); setMsg('Suche nach Updates …', '', true);
+    await window.dayone.check();
+  };
+  document.getElementById('btn-install').onclick = async () => {
+    setMsg('Installiere …', '', true);
+    await window.dayone.install();
+  };
+  document.getElementById('btn-repair').onclick = async () => {
+    setMsg('Repariere …', '', true);
+    await window.dayone.repair();
+  };
+</script>
+</body>
+</html>

@@ -1,7 +1,11 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, shell, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, shell, dialog, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+
+// Auto-Updater (electron-updater) — nur im gepackten Build aktiv
+let autoUpdater = null;
+try { autoUpdater = require('electron-updater').autoUpdater; } catch {}
 
 // Autoplay ohne User-Geste erlauben (YouTube, Audio)
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
@@ -14,6 +18,7 @@ app.setName('Day One');
 
 const PORT = 8771;
 let mainWindow = null;
+let updaterWindow = null;
 let tray = null;
 
 // ── userData .env ────────────────────────────────────────────────────────────
@@ -91,6 +96,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
     },
     show: false,
     title: 'Day One',
@@ -111,18 +117,14 @@ function createWindow() {
     mainWindow?.loadURL(`http://localhost:${PORT}`);
   });
 
-  // Crash-Diagnose: Renderer abgestürzt → loggen + automatisch neu laden
-  mainWindow.webContents.on('render-process-gone', (_e, details) => {
-    console.error('RENDERER ABGESTÜRZT:', details);
+  // Falls der Renderer abstürzt: automatisch neu laden
+  mainWindow.webContents.on('render-process-gone', () => {
     if (!app.isQuitting && mainWindow) {
       setTimeout(() => { try { mainWindow.reload(); } catch {} }, 400);
     }
   });
-  mainWindow.webContents.on('console-message', (_e, level, message) => {
-    if (level >= 2) console.error('[Renderer]', message);
-  });
-  // DevTools im Dev-Modus offen, damit Fehler sichtbar sind
-  if (!app.isPackaged) {
+  // DevTools nur wenn DAYONE_DEVTOOLS gesetzt (zum Debuggen)
+  if (!app.isPackaged && process.env.DAYONE_DEVTOOLS) {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
 
@@ -142,6 +144,71 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
+// ── Updater-Fenster (Aktualisieren · Reparieren · Installieren) ───────────────
+function sendUpdaterStatus(data) {
+  try { updaterWindow?.webContents.send('updater:status', data); } catch {}
+}
+
+function createUpdaterWindow() {
+  if (updaterWindow) { updaterWindow.show(); updaterWindow.focus(); return; }
+  updaterWindow = new BrowserWindow({
+    width: 600, height: 420, resizable: false, frame: false,
+    backgroundColor: '#111111', title: 'Day One – Installer',
+    webPreferences: {
+      nodeIntegration: false, contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+    },
+    show: false,
+  });
+  updaterWindow.loadFile(path.join(__dirname, 'updater.html'));
+  updaterWindow.once('ready-to-show', () => updaterWindow.show());
+  updaterWindow.on('closed', () => { updaterWindow = null; });
+}
+
+// electron-updater Events an das Fenster weiterleiten
+function setupAutoUpdater() {
+  if (!autoUpdater) return;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on('checking-for-update', () => sendUpdaterStatus({ type: 'checking' }));
+  autoUpdater.on('update-available', (i) => sendUpdaterStatus({ type: 'available', version: i?.version }));
+  autoUpdater.on('update-not-available', () => sendUpdaterStatus({ type: 'none' }));
+  autoUpdater.on('download-progress', (p) => sendUpdaterStatus({ type: 'progress', percent: p?.percent || 0 }));
+  autoUpdater.on('update-downloaded', () => sendUpdaterStatus({ type: 'downloaded' }));
+  autoUpdater.on('error', (e) => sendUpdaterStatus({ type: 'error', message: String(e?.message || e) }));
+}
+
+// IPC-Handler für die 3 Buttons
+function setupUpdaterIPC() {
+  ipcMain.handle('app:version', () => app.getVersion());
+
+  ipcMain.handle('updater:check', async () => {
+    if (!autoUpdater) { sendUpdaterStatus({ type: 'error', message: 'Updater nur im installierten Build verfügbar.' }); return; }
+    try { await autoUpdater.checkForUpdates(); } catch (e) { sendUpdaterStatus({ type: 'error', message: String(e?.message || e) }); }
+  });
+
+  // Installieren: heruntergeladenes Update übernehmen & neu starten
+  ipcMain.handle('updater:install', async () => {
+    if (!autoUpdater) { sendUpdaterStatus({ type: 'error', message: 'Updater nur im installierten Build verfügbar.' }); return; }
+    try {
+      sendUpdaterStatus({ type: 'installing' });
+      app.isQuitting = true;
+      setImmediate(() => autoUpdater.quitAndInstall(false, true));
+    } catch (e) { sendUpdaterStatus({ type: 'error', message: String(e?.message || e) }); }
+  });
+
+  // Reparieren: aktuelle Version neu herunterladen & installieren
+  ipcMain.handle('updater:repair', async () => {
+    if (!autoUpdater) { sendUpdaterStatus({ type: 'error', message: 'Updater nur im installierten Build verfügbar.' }); return; }
+    try {
+      sendUpdaterStatus({ type: 'checking' });
+      autoUpdater.allowDowngrade = true;        // gleiche/ältere Version erneut zulassen
+      autoUpdater.autoDownload = true;
+      await autoUpdater.checkForUpdates();        // lädt latest, ersetzt Dateien
+    } catch (e) { sendUpdaterStatus({ type: 'error', message: String(e?.message || e) }); }
+  });
+}
+
 // ── System-Tray ───────────────────────────────────────────────────────────────
 function createTray() {
   const iconPath = path.join(__dirname, 'assets', 'icon.png');
@@ -159,6 +226,10 @@ function createTray() {
     {
       label: 'Day One öffnen',
       click: () => { mainWindow?.show(); mainWindow?.focus(); },
+    },
+    {
+      label: 'Updates / Installer …',
+      click: () => createUpdaterWindow(),
     },
     { type: 'separator' },
     {
@@ -195,10 +266,17 @@ app.whenReady().then(async () => {
   startServer(envPath);
   createWindow();
   createTray();
+  setupAutoUpdater();
+  setupUpdaterIPC();
 
   // --hidden Flag: beim Autostart kein Fenster öffnen, nur Tray
   if (process.argv.includes('--hidden')) {
     mainWindow?.hide();
+  }
+
+  // Im Hintergrund still nach Updates schauen (nur gepackter Build)
+  if (autoUpdater && app.isPackaged) {
+    setTimeout(() => { autoUpdater.checkForUpdates().catch(() => {}); }, 8000);
   }
 });
 

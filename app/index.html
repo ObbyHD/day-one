@@ -1365,40 +1365,91 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
     const EPH = session?.value || session?.client_secret?.value;
     if (!EPH) throw new Error(session?.error || "Kein Realtime-Token");
 
-    const ws = new WebSocket("wss://api.openai.com/v1/realtime?intent=transcription", [
+    // GA-API: KEIN "openai-beta.realtime-v1" Subprotocol und kein ?intent (= Beta).
+    // Die Transkriptions-Session steckt bereits im ephemeren Token.
+    const ws = new WebSocket("wss://api.openai.com/v1/realtime", [
       "realtime",
       "openai-insecure-api-key." + EPH,
-      "openai-beta.realtime-v1",
     ]);
     wsRef.current = ws;
 
+    // Diagnose: Grund fürs Schließen sichtbar machen
+    ws.addEventListener("close", (ev) => {
+      console.error("WS CLOSE code=" + ev.code + " reason=" + (ev.reason || "(leer)"));
+    });
+
     await new Promise((resolve, reject) => {
       ws.onopen = () => resolve();
-      ws.onerror = () => reject(new Error("WebSocket-Fehler"));
+      ws.onerror = (e) => { console.error("WS ERROR (open-Phase)"); reject(new Error("WebSocket-Fehler")); };
       setTimeout(() => reject(new Error("Realtime-Timeout")), 6000);
     });
 
-    // Audio mit 24 kHz erfassen und als PCM16 streamen
+    // Nach dem Öffnen die Transkriptions-Session explizit konfigurieren
+    ws.send(JSON.stringify({
+      type: "session.update",
+      session: {
+        type: "transcription",
+        audio: {
+          input: {
+            format: { type: "audio/pcm", rate: 24000 },
+            transcription: { model: "gpt-4o-transcribe", language: "de" },
+            turn_detection: { type: "server_vad", threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 500 },
+          },
+        },
+      },
+    }));
+
+    // Audio mit 24 kHz erfassen via AudioWorklet (ScriptProcessorNode crasht nativ!)
     const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
     audioCtxRef.current = ctx;
+    if (ctx.state === "suspended") { try { await ctx.resume(); } catch {} }
+
+    // Worklet-Code als Blob laden — puffert ~100ms und postet Float32-Blöcke
+    const workletCode = `
+      class PCMProcessor extends AudioWorkletProcessor {
+        constructor() { super(); this._buf = []; this._count = 0; }
+        process(inputs) {
+          const ch = inputs[0] && inputs[0][0];
+          if (ch && ch.length) {
+            this._buf.push(ch.slice(0));
+            this._count += ch.length;
+            if (this._count >= 2400) {
+              const out = new Float32Array(this._count);
+              let off = 0;
+              for (const b of this._buf) { out.set(b, off); off += b.length; }
+              this.port.postMessage(out, [out.buffer]);
+              this._buf = []; this._count = 0;
+            }
+          }
+          return true;
+        }
+      }
+      registerProcessor('pcm-processor', PCMProcessor);
+    `;
+    const blobUrl = URL.createObjectURL(new Blob([workletCode], { type: "application/javascript" }));
+    await ctx.audioWorklet.addModule(blobUrl);
+    URL.revokeObjectURL(blobUrl);
+
     const src = ctx.createMediaStreamSource(stream);
     srcRef.current = src;
-    const proc = ctx.createScriptProcessor(4096, 1, 1);
-    procRef.current = proc;
-    proc.onaudioprocess = (e) => {
+    const node = new AudioWorkletNode(ctx, "pcm-processor");
+    procRef.current = node;
+    node.port.onmessage = (e) => {
       try {
         if (!wsRef.current || wsRef.current.readyState !== 1) return;
-        const b64 = floatToB64PCM16(e.inputBuffer.getChannelData(0));
+        const b64 = floatToB64PCM16(e.data);
         wsRef.current.send(JSON.stringify({ type: "input_audio_buffer.append", audio: b64 }));
-      } catch (err) { /* Audio-Callback nie crashen lassen */ }
+      } catch (err) { /* nie crashen */ }
     };
-    // Stumm an Ausgang hängen, damit der Prozessor läuft (kein Echo)
-    const mute = ctx.createGain(); mute.gain.value = 0;
-    src.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
+    src.connect(node); // Worklet pullt Audio über die Verbindung (kein destination/Echo nötig)
 
     ws.onmessage = (ev) => {
       let msg; try { msg = JSON.parse(ev.data); } catch { return; }
       const t = msg.type || "";
+      if (t === "error") {
+        console.error("REALTIME ERROR:", JSON.stringify(msg.error || msg));
+        return;
+      }
       if (t.endsWith("input_audio_transcription.delta") && msg.delta) {
         // Wort/Teilwort live anhängen
         setInput((p) => p + msg.delta);
@@ -1414,7 +1465,7 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
   };
 
   const cleanupAudio = () => {
-    try { procRef.current && (procRef.current.onaudioprocess = null); } catch {}
+    try { if (procRef.current?.port) procRef.current.port.onmessage = null; } catch {}
     try { procRef.current?.disconnect(); } catch {}
     try { srcRef.current?.disconnect(); } catch {}
     try { audioCtxRef.current?.close(); } catch {}
