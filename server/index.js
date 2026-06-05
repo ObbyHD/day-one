@@ -13,7 +13,11 @@ const PORT = process.env.PORT || 8771;
 
 // --- tiny .env loader (no dependency) ---
 function loadEnv() {
-  for (const p of [path.join(ROOT, ".env"), path.join(__dirname, ".env")]) {
+  const extra = process.env.DAYONE_ENV_PATH;
+  const candidates = extra
+    ? [extra, path.join(ROOT, ".env"), path.join(__dirname, ".env")]
+    : [path.join(ROOT, ".env"), path.join(__dirname, ".env")];
+  for (const p of candidates) {
     try {
       const txt = fs.readFileSync(p, "utf8");
       txt.split(/\r?\n/).forEach((line) => {

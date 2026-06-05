@@ -1,0 +1,42 @@
+{
+  "name": "day-one",
+  "version": "1.0.0",
+  "description": "Day One – dein persönlicher Tagesplaner",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win",
+    "build:dir": "electron-builder --win --dir"
+  },
+  "build": {
+    "appId": "com.dayone.app",
+    "productName": "Day One",
+    "asar": true,
+    "files": [
+      "main.js",
+      "server/**/*",
+      "app/**/*",
+      "assets/**/*",
+      ".env.example"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Day One"
+    },
+    "extraMetadata": {
+      "main": "main.js"
+    }
+  },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3"
+  }
+}
