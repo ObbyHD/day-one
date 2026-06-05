@@ -1153,6 +1153,8 @@ function BorderedField({ label, value, onChange, placeholder, rows = 3 }) {
 }
 
 /* ---------- Sidebar ---------- */
+const SIDEBAR_WIDTH_KEY = "dayone-sidebar-width";
+const SIDEBAR_MIN = 220, SIDEBAR_MAX = 520;
 function Sidebar({ collapsed, onToggle, context, onActions }) {
   const greet = () => {
     const h = new Date().getHours();
@@ -1169,6 +1171,13 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
   const [busy, setBusy] = useState(false);
   const [micDevices, setMicDevices] = useState([]);
   const [selectedMicId, setSelectedMicId] = useState("");
+  // Breite der Sidebar (per Maus ziehbar)
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const v = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY) || "", 10);
+    return (v >= SIDEBAR_MIN && v <= SIDEBAR_MAX) ? v : 280;
+  });
+  const [dragging, setDragging] = useState(false);
+  const inputRef = useRef(null);
   const [showMicMenu, setShowMicMenu] = useState(false);
   const listRef = useRef(null);
   const recRef = useRef(null);
@@ -1181,6 +1190,36 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [showMicMenu]);
+
+  // Sidebar-Breite per Maus ziehen
+  const startResize = (e) => {
+    e.preventDefault();
+    setDragging(true);
+    const onMove = (ev) => {
+      const w = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, ev.clientX));
+      setSidebarWidth(w);
+    };
+    const onUp = () => {
+      setDragging(false);
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      try { localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidthRef.current)); } catch {}
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
+  // Aktuelle Breite in Ref halten (für Speichern beim Loslassen)
+  const sidebarWidthRef = useRef(sidebarWidth);
+  useEffect(() => { sidebarWidthRef.current = sidebarWidth; }, [sidebarWidth]);
+
+  // Textfeld automatisch nach oben wachsen lassen
+  const autoGrow = () => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 200) + "px";
+  };
+  useEffect(() => { autoGrow(); }, [input, recording, transcribing]);
 
   // Mikrofone laden (braucht erst Permission, deshalb lazy bei Rechtsklick)
   const loadMicDevices = async () => {
@@ -1284,7 +1323,17 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
   return (
     <aside
       className={`${collapsed ? "sidebar-collapsed" : ""} relative h-full bg-[color:var(--bg)] border-r border-[color:var(--line)] flex flex-col shrink-0`}
-      style={{ width: collapsed ? 56 : 260, transition: "width 280ms cubic-bezier(.4,0,.2,1)" }}>
+      style={{ width: collapsed ? 56 : sidebarWidth, transition: dragging ? "none" : "width 280ms cubic-bezier(.4,0,.2,1)" }}>
+      {/* Resize-Griff am rechten Rand */}
+      {!collapsed && (
+        <div onMouseDown={startResize}
+          className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize z-30 group"
+          style={{ transform: "translateX(50%)" }}
+          title="Breite ziehen">
+          <div className={`absolute inset-y-0 right-1/2 w-px translate-x-1/2 transition-colors
+            ${dragging ? "bg-[color:var(--accent)]" : "bg-transparent group-hover:bg-[color:var(--accent)]/50"}`} />
+        </div>
+      )}
       <div className="flex items-center justify-between px-4 pt-5 pb-4">
         <button onClick={onToggle}
           className="text-[color:var(--text-dim)] hover:text-[color:var(--text)] p-1.5 rounded-md hover:bg-white/5 transition-colors"
@@ -1315,14 +1364,15 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
         )}
       </div>
       <div className="px-4 pb-5 pt-2 sidebar-content">
-        <div className="flex items-center gap-1.5 w-full bg-white/[0.04] border border-[color:var(--line-2)] rounded-xl p-1.5 focus-within:border-[color:var(--line-3)] transition-colors">
-          <textarea rows={1}
-            value={recording ? "" : transcribing ? "" : input}
+        <div className="flex items-end gap-1.5 w-full bg-white/[0.04] border border-[color:var(--line-2)] rounded-xl p-1.5 focus-within:border-[color:var(--line-3)] transition-colors">
+          <textarea ref={inputRef} rows={1}
+            value={input}
             onChange={(e) => { if (!recording && !transcribing) setInput(e.target.value); }}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
             placeholder={recording ? "Sprich jetzt …" : transcribing ? "Transkribiere …" : "Nachricht …"}
             disabled={recording || transcribing}
-            className="flex-1 min-w-0 bg-transparent resize-none outline-none text-[14px] leading-5 text-[color:var(--text)] placeholder-[color:var(--text-mute)] py-1 px-2 max-h-24 disabled:opacity-70"/>
+            className="flex-1 min-w-0 self-end bg-transparent resize-none outline-none text-[14px] leading-5 text-[color:var(--text)] placeholder-[color:var(--text-mute)] py-1 px-2 scroll-thin overflow-y-auto disabled:opacity-70"
+            style={{ maxHeight: 200 }}/>
           <div ref={micMenuRef} className="relative shrink-0 flex items-center">
             {/* Chevron: Mikrofon auswählen (vor der Aufnahme) */}
             <button onClick={() => { loadMicDevices(); setShowMicMenu(v => !v); }}
