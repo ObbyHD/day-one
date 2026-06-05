@@ -1163,6 +1163,7 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
   const [messages, setMessages] = useState(() => (DEMO ? DEMO_DATA.messages : [{ from: "ai", text: greet() }]));
   const [input, setInput] = useState("");
   const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [micDevices, setMicDevices] = useState([]);
   const [selectedMicId, setSelectedMicId] = useState("");
@@ -1245,7 +1246,7 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
           const reader = new FileReader();
           reader.onload = async () => {
             const base64 = reader.result.split(",")[1];
-            setBusy(true);
+            setTranscribing(true);
             try {
               const res = await fetch("/api/transcribe", {
                 method: "POST",
@@ -1257,7 +1258,7 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
               else setMessages((m) => [...m, { from: "ai", text: "Diktat leer — bitte nochmal sprechen." }]);
             } catch (err) {
               setMessages((m) => [...m, { from: "ai", text: `Diktierfehler: ${err?.message || "Server nicht erreichbar"}` }]);
-            } finally { setBusy(false); }
+            } finally { setTranscribing(false); }
           };
           reader.readAsDataURL(blob);
         };
@@ -1304,11 +1305,13 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
       </div>
       <div className="px-4 pb-5 pt-2 sidebar-content">
         <div className="flex items-center gap-1.5 w-full bg-white/[0.04] border border-[color:var(--line-2)] rounded-xl p-1.5 focus-within:border-[color:var(--line-3)] transition-colors">
-          <textarea rows={1} value={input}
-            onChange={(e) => setInput(e.target.value)}
+          <textarea rows={1}
+            value={recording ? "" : transcribing ? "" : input}
+            onChange={(e) => { if (!recording && !transcribing) setInput(e.target.value); }}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-            placeholder="Nachricht …"
-            className="flex-1 min-w-0 bg-transparent resize-none outline-none text-[14px] leading-5 text-[color:var(--text)] placeholder-[color:var(--text-mute)] py-1 px-2 max-h-24"/>
+            placeholder={recording ? "🎤 Sprich jetzt …" : transcribing ? "⏳ Transkribiere …" : "Nachricht …"}
+            disabled={recording || transcribing}
+            className="flex-1 min-w-0 bg-transparent resize-none outline-none text-[14px] leading-5 text-[color:var(--text)] placeholder-[color:var(--text-mute)] py-1 px-2 max-h-24 disabled:opacity-70"/>
           <div ref={micMenuRef} className="relative shrink-0">
             <button onClick={toggleMic}
               onContextMenu={(e) => { e.preventDefault(); loadMicDevices(); setShowMicMenu(v => !v); }}

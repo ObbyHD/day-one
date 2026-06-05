@@ -31,6 +31,20 @@ function ensureUserEnv() {
   return dest;
 }
 
+// ── Alten Prozess auf Port killen (damit immer die aktuelle Version läuft) ──
+function freePort(port) {
+  return new Promise((resolve) => {
+    const { exec } = require('child_process');
+    exec(`netstat -ano | findstr :${port} | findstr LISTENING`, (err, stdout) => {
+      if (!stdout || !stdout.trim()) return resolve();
+      const match = stdout.match(/\s+(\d+)\s*$/m);
+      if (!match) return resolve();
+      const pid = match[1].trim();
+      exec(`taskkill /F /PID ${pid}`, () => setTimeout(resolve, 400));
+    });
+  });
+}
+
 // ── Server (läuft im selben Prozess) ────────────────────────────────────────
 function startServer(envPath) {
   // Env-Pfad setzen, bevor server/index.js geladen wird
@@ -145,13 +159,16 @@ function createTray() {
 }
 
 // ── App-Start ─────────────────────────────────────────────────────────────────
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // Autostart mit Windows
   app.setLoginItemSettings({
     openAtLogin: true,
     name: 'Day One',
     args: ['--hidden'],
   });
+
+  // Alten Node-Prozess auf Port killen → immer aktuelle Server-Version
+  await freePort(PORT);
 
   const envPath = ensureUserEnv();
   startServer(envPath);
