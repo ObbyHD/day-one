@@ -5,3 +5,6 @@ node_modules/
 Claude design/
 dist/
 build-output/
+release.bat
+*.token
+.release-env
