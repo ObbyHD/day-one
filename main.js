@@ -5,6 +5,9 @@ const http = require('http');
 
 // Autoplay ohne User-Geste erlauben (YouTube, Audio)
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+// Web Speech API aktivieren
+app.commandLine.appendSwitch('enable-speech-dispatcher');
+app.commandLine.appendSwitch('enable-features', 'WebSpeech');
 
 const PORT = 8771;
 let mainWindow = null;
@@ -75,13 +78,13 @@ function createWindow() {
 
   mainWindow.setMenuBarVisibility(false);
 
-  // Mikrofon + Medien immer erlauben (für Diktierfunktion)
+  // Mikrofon + Speech immer erlauben (für Diktierfunktion)
   mainWindow.webContents.session.setPermissionRequestHandler((_wc, permission, callback) => {
-    const allowed = ['media', 'microphone', 'audioCapture', 'notifications'];
+    const allowed = ['media', 'microphone', 'audioCapture', 'notifications', 'speech'];
     callback(allowed.includes(permission));
   });
   mainWindow.webContents.session.setPermissionCheckHandler((_wc, permission) => {
-    return ['microphone', 'media', 'audioCapture'].includes(permission);
+    return ['microphone', 'media', 'audioCapture', 'speech'].includes(permission);
   });
 
   waitForServer(() => {

@@ -719,8 +719,8 @@ function YouTubeWidget({ onDismiss }) {
   const [playlist, setPlaylist] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(YT_PLAYLIST_KEY) || "null");
-      // Erste Installation: Standard-Playlist laden
-      if (!saved) return YT_DEFAULT_PLAYLIST;
+      // Leer oder nicht vorhanden → Standard-Playlist
+      if (!saved || saved.length === 0) return YT_DEFAULT_PLAYLIST;
       return saved;
     } catch { return YT_DEFAULT_PLAYLIST; }
   });
