@@ -698,132 +698,222 @@ function VerlaufWidget({ onDismiss, days }) {
   );
 }
 
-/* ---------- Spotify (real HTML5 audio, playlist from Jamendo via /api/music) ---------- */
-const FALLBACK_PLAYLIST = [
-  { title: "Morning Drive", artist: "Motivation Mix", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", cover: "" },
-  { title: "Momentum",      artist: "Motivation Mix", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3", cover: "" },
-  { title: "Rise Up",       artist: "Motivation Mix", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3", cover: "" },
-  { title: "Flow State",    artist: "Motivation Mix", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3", cover: "" },
-];
-const dayIndex = (len) => {
-  if (!len) return 0;
-  const d = new Date();
-  const day = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000);
-  return day % len;
-};
-function SpotifyWidget({ onDismiss }) {
-  const audioRef = useRef(null);
-  const [tracks, setTracks] = useState(FALLBACK_PLAYLIST);
-  const [playing, setPlaying] = useState(false);
-  const [liked, setLiked] = useState(false);
-  const [trackIdx, setTrackIdx] = useState(() => dayIndex(FALLBACK_PLAYLIST.length));
-  const [cur, setCur] = useState(0);
-  const [dur, setDur] = useState(0);
-  const track = tracks[trackIdx] || tracks[0] || {};
-  const progress = dur ? cur / dur : 0;
+/* ---------- YouTube Playlist Player ---------- */
+const YT_PLAYLIST_KEY = "dayone-yt-playlist";
 
-  // Fetch the daily motivational playlist once (Jamendo, or fallback).
+function extractYTId(url) {
+  const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+function YouTubeWidget({ onDismiss }) {
+  const playerRef = useRef(null);
+  const ytReadyRef = useRef(false);
+  const playlistRef = useRef([]);
+  const idxRef = useRef(0);
+  const [playlist, setPlaylist] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(YT_PLAYLIST_KEY) || "[]"); } catch { return []; }
+  });
+  const [idx, setIdx] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [addUrl, setAddUrl] = useState("");
+  const [addErr, setAddErr] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const divId = useRef("yt-" + Math.random().toString(36).slice(2)).current;
+
+  // Keep refs in sync for use inside YT callbacks (stale closure avoidance)
+  useEffect(() => { playlistRef.current = playlist; }, [playlist]);
+  useEffect(() => { idxRef.current = idx; }, [idx]);
+
+  // Persist playlist
   useEffect(() => {
-    let alive = true;
-    fetch("/api/music").then(r => r.json()).then(j => {
-      if (!alive || !Array.isArray(j.tracks) || !j.tracks.length) return;
-      setTracks(j.tracks);
-      setTrackIdx(dayIndex(j.tracks.length));
-    }).catch(() => {});
-    return () => { alive = false; };
+    try { localStorage.setItem(YT_PLAYLIST_KEY, JSON.stringify(playlist)); } catch {}
+  }, [playlist]);
+
+  // Create YT player once
+  useEffect(() => {
+    const create = () => {
+      if (playerRef.current) return;
+      playerRef.current = new window.YT.Player(divId, {
+        height: "1", width: "1",
+        playerVars: { autoplay: 0, controls: 0, rel: 0 },
+        events: {
+          onReady: () => { ytReadyRef.current = true; },
+          onStateChange: (e) => {
+            const S = window.YT.PlayerState;
+            if (e.data === S.PLAYING) setPlaying(true);
+            if (e.data === S.PAUSED || e.data === S.CUED) setPlaying(false);
+            if (e.data === S.ENDED) {
+              const len = playlistRef.current.length;
+              if (len > 0) {
+                const next = (idxRef.current + 1) % len;
+                setIdx(next);
+                playerRef.current?.loadVideoById(playlistRef.current[next]?.id);
+              }
+            }
+          },
+        },
+      });
+    };
+    if (window.YT?.Player) {
+      create();
+    } else {
+      const prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => { prev?.(); create(); };
+      if (!document.getElementById("yt-api-script")) {
+        const s = document.createElement("script");
+        s.id = "yt-api-script"; s.src = "https://www.youtube.com/iframe_api";
+        document.head.appendChild(s);
+      }
+    }
+    return () => { try { playerRef.current?.destroy(); } catch {} playerRef.current = null; };
   }, []);
 
-  // Load the selected track; keep playing across skips.
-  useEffect(() => {
-    const a = audioRef.current; if (!a || !track.url) return;
-    a.src = track.url; a.load(); setCur(0); setDur(0);
-    if (playing) a.play().catch(() => {});
-  }, [trackIdx, tracks]);
+  const cueTrack = useCallback((i, autoplay = false) => {
+    const vid = playlist[i]?.id;
+    if (!vid || !playerRef.current) return;
+    if (autoplay) playerRef.current.loadVideoById(vid);
+    else playerRef.current.cueVideoById(vid);
+  }, [playlist]);
 
-  const skip = (dir) => setTrackIdx(i => (i + dir + tracks.length) % tracks.length);
   const togglePlay = () => {
-    const a = audioRef.current; if (!a) return;
-    if (a.paused) a.play().catch(() => {}); else a.pause();
+    if (!playerRef.current) return;
+    if (playing) { playerRef.current.pauseVideo(); }
+    else {
+      if (playlist.length === 0) return;
+      if (!ytReadyRef.current) return;
+      // If nothing cued yet, cue first
+      const state = playerRef.current.getPlayerState?.();
+      if (state === -1 || state === undefined) cueTrack(idx, true);
+      else playerRef.current.playVideo();
+    }
   };
 
-  const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  const skip = (dir) => {
+    if (playlist.length === 0) return;
+    const next = (idx + dir + playlist.length) % playlist.length;
+    setIdx(next);
+    cueTrack(next, playing);
+  };
+
+  const selectTrack = (i) => {
+    setIdx(i);
+    cueTrack(i, true);
+  };
+
+  const addTrack = async () => {
+    const raw = addUrl.trim();
+    const id = extractYTId(raw);
+    if (!id) { setAddErr("Ungültige YouTube-URL"); return; }
+    if (playlist.some(t => t.id === id)) { setAddErr("Bereits in der Playlist"); return; }
+    setAdding(true);
+    let title = id;
+    try {
+      const r = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${id}&format=json`);
+      if (r.ok) { const j = await r.json(); title = j.title || id; }
+    } catch {}
+    setPlaylist(p => [...p, { id, title }]);
+    setAddUrl(""); setAddErr(""); setShowAdd(false); setAdding(false);
+  };
+
+  const removeTrack = (i) => {
+    setPlaylist(p => p.filter((_, j) => j !== i));
+    if (idx >= i && idx > 0) setIdx(x => x - 1);
+  };
+
+  const current = playlist[idx];
 
   return (
-    <WidgetShell onDismiss={onDismiss} title="Heute · Motivation">
-      <audio ref={audioRef} preload="metadata"
-        onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
-        onTimeUpdate={(e) => setCur(e.target.currentTime)}
-        onLoadedMetadata={(e) => setDur(e.target.duration || 0)}
-        onEnded={() => skip(1)} />
-      <div className="flex-1 flex flex-col gap-2.5 min-h-0 justify-center">
-        {/* Track row: album + title/artist + spotify badge */}
-        <div className="flex items-center gap-3">
-          <div className="shrink-0 relative w-[48px] h-[48px] rounded-md overflow-hidden"
-               style={{
-                 background: "radial-gradient(circle at 30% 30%, #2a2724, #0c0a08)",
-                 border: "1px solid var(--line-2)",
-               }}>
-            {track.cover ? (
-              <img src={track.cover} alt="" className="absolute inset-0 w-full h-full object-cover" draggable="false" />
-            ) : (
-              <div className="absolute inset-0 grid place-items-center">
-                <div className="w-4 h-4 rounded-full border border-white/20"/>
-                <div className="absolute w-1 h-1 rounded-full bg-white/30"/>
+    <WidgetShell onDismiss={onDismiss} title="Musik · YouTube">
+      {/* Hidden YT player iframe mount point */}
+      <div id={divId} style={{ position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }} />
+
+      <div className="flex-1 flex flex-col gap-2.5 min-h-0">
+        {playlist.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center">
+            <MusicIco size={22} stroke={1.2} />
+            <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--text-mute)] mt-1">Playlist leer</div>
+            <div className="text-[12px] text-[color:var(--text-dim)]">Füge YouTube-Links hinzu</div>
+          </div>
+        ) : (
+          <>
+            {/* Current track info */}
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="shrink-0 w-[48px] h-[48px] rounded-md overflow-hidden border border-[color:var(--line-2)] bg-black/40">
+                {current && <img src={`https://img.youtube.com/vi/${current.id}/mqdefault.jpg`} alt="" className="w-full h-full object-cover" draggable="false" />}
               </div>
-            )}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-[15px] font-semibold tracking-tight text-[color:var(--text)] truncate leading-tight">
-              {track.title}
+              <div className="flex-1 min-w-0">
+                <div className="text-[13.5px] font-semibold text-[color:var(--text)] truncate leading-tight">
+                  {current?.title || "–"}
+                </div>
+                <div className="text-[11px] text-[color:var(--text-mute)] mt-0.5 tabular-nums">{idx + 1} / {playlist.length}</div>
+              </div>
+              {playing && <span className="eq shrink-0"><span/><span/><span/><span/></span>}
             </div>
-            <div className="text-[12px] text-[color:var(--text-dim)] truncate mt-0.5">
-              {track.artist}
+
+            {/* Controls */}
+            <div className="flex items-center justify-center gap-2 shrink-0">
+              <button onClick={() => skip(-1)} onMouseDown={e => e.stopPropagation()}
+                      className="w-8 h-8 grid place-items-center rounded-full text-[color:var(--text-dim)] hover:text-[color:var(--text)] -scale-x-100" aria-label="Zurück">
+                <SkipIco size={13}/>
+              </button>
+              <button onClick={togglePlay} onMouseDown={e => e.stopPropagation()}
+                className="w-9 h-9 grid place-items-center rounded-full bg-white/[0.06] border border-[color:var(--line-2)] text-[color:var(--text)] hover:bg-white/[0.1] transition-colors"
+                aria-label={playing ? "Pause" : "Play"}>
+                {playing ? <PauseIco size={13} fill="currentColor" stroke={0}/> : <PlayIco size={13} fill="currentColor" stroke={0}/>}
+              </button>
+              <button onClick={() => skip(1)} onMouseDown={e => e.stopPropagation()}
+                      className="w-8 h-8 grid place-items-center rounded-full text-[color:var(--text-dim)] hover:text-[color:var(--text)]" aria-label="Weiter">
+                <SkipIco size={13}/>
+              </button>
+            </div>
+
+            {/* Playlist */}
+            <div className="flex-1 min-h-0 overflow-y-auto scroll-thin space-y-0.5">
+              {playlist.map((t, i) => (
+                <div key={t.id} onClick={() => selectTrack(i)}
+                     className={`group flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors
+                       ${i === idx ? "bg-white/[0.06] text-[color:var(--text)]" : "text-[color:var(--text-dim)] hover:bg-white/[0.03] hover:text-[color:var(--text)]"}`}>
+                  <img src={`https://img.youtube.com/vi/${t.id}/default.jpg`} alt="" className="w-7 h-7 rounded object-cover shrink-0" />
+                  <span className="flex-1 min-w-0 text-[11.5px] truncate">{t.title}</span>
+                  <button onClick={e => { e.stopPropagation(); removeTrack(i); }}
+                    onMouseDown={e => e.stopPropagation()}
+                    className="opacity-0 group-hover:opacity-100 w-5 h-5 grid place-items-center rounded text-[color:var(--text-mute)] hover:text-[color:var(--accent-2)] transition-all shrink-0"
+                    aria-label="Entfernen">
+                    <XIco size={10}/>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Add track */}
+        {showAdd ? (
+          <div className="flex flex-col gap-1.5 shrink-0">
+            <input autoFocus value={addUrl} onChange={e => { setAddUrl(e.target.value); setAddErr(""); }}
+              onKeyDown={e => { if (e.key === "Enter") addTrack(); if (e.key === "Escape") { setShowAdd(false); setAddErr(""); } }}
+              placeholder="YouTube-URL einfügen …"
+              className="task-input w-full text-[12px]" />
+            {addErr && <div className="text-[11px] text-[color:var(--accent-2)]">{addErr}</div>}
+            <div className="flex gap-1.5">
+              <button onClick={addTrack} disabled={adding}
+                className="flex-1 text-[11px] py-1 rounded-md bg-[color:var(--accent)] text-white hover:bg-[color:var(--accent-2)] disabled:opacity-50 transition-colors">
+                {adding ? "Lädt …" : "Hinzufügen"}
+              </button>
+              <button onClick={() => { setShowAdd(false); setAddErr(""); }} onMouseDown={e => e.stopPropagation()}
+                className="text-[11px] px-2 py-1 rounded-md border border-[color:var(--line)] text-[color:var(--text-dim)] hover:text-[color:var(--text)] transition-colors">
+                Abbrechen
+              </button>
             </div>
           </div>
-          <div className="flex items-center gap-1 text-[9.5px] uppercase tracking-[0.18em] text-[color:var(--text-mute)] shrink-0">
-            {playing ? <span className="eq"><span/><span/><span/><span/></span>
-                     : <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--spotify)" }}/>}
-            Spotify
-          </div>
-        </div>
-
-        {/* Progress */}
-        <div>
-          <div className="h-[3px] w-full bg-white/[0.06] rounded-full overflow-hidden">
-            <div className="h-full bg-[color:var(--spotify)] rounded-full"
-                 style={{ width: `${progress * 100}%`, transition: playing ? "width .1s linear" : "width .2s ease" }}/>
-          </div>
-          <div className="mt-1 flex items-center justify-between text-[10px] tabular-nums text-[color:var(--text-mute)]">
-            <span>{fmt(cur)}</span>
-            <span>{fmt(dur)}</span>
-          </div>
-        </div>
-
-        {/* Controls — centered */}
-        <div className="flex items-center justify-center gap-2">
-          <button onClick={() => setLiked(l => !l)}
-            onMouseDown={(e) => e.stopPropagation()}
-            className={`w-8 h-8 grid place-items-center rounded-full transition-colors
-              ${liked ? "text-[color:var(--spotify)]" : "text-[color:var(--text-dim)] hover:text-[color:var(--text)]"}`}
-            aria-label="Like">
-            <HeartIco filled={liked} size={14}/>
+        ) : (
+          <button onClick={() => setShowAdd(true)} onMouseDown={e => e.stopPropagation()}
+            className="shrink-0 flex items-center gap-1.5 text-[11px] text-[color:var(--text-mute)] hover:text-[color:var(--text)] transition-colors">
+            <PlusIco size={11}/> Song hinzufügen
           </button>
-          <button onClick={() => skip(-1)} onMouseDown={(e) => e.stopPropagation()}
-                  className="w-8 h-8 grid place-items-center rounded-full text-[color:var(--text-dim)] hover:text-[color:var(--text)] -scale-x-100"
-                  aria-label="Vorheriger Titel">
-            <SkipIco size={13}/>
-          </button>
-          <button onClick={togglePlay} onMouseDown={(e) => e.stopPropagation()}
-            className="w-9 h-9 grid place-items-center rounded-full bg-white/[0.06] border border-[color:var(--line-2)] text-[color:var(--text)] hover:bg-white/[0.1] hover:text-[color:var(--spotify)] transition-colors"
-            aria-label={playing ? "Pause" : "Play"} title={playing ? "Pause" : "Play"}>
-            {playing ? <PauseIco size={13} fill="currentColor" stroke={0}/> : <PlayIco size={13} fill="currentColor" stroke={0}/>}
-          </button>
-          <button onClick={() => skip(1)} onMouseDown={(e) => e.stopPropagation()}
-                  className="w-8 h-8 grid place-items-center rounded-full text-[color:var(--text-dim)] hover:text-[color:var(--text)]"
-                  aria-label="Nächster Titel">
-            <SkipIco size={13}/>
-          </button>
-        </div>
+        )}
       </div>
     </WidgetShell>
   );
@@ -1653,7 +1743,7 @@ function App() {
             )}
             {visible.spotify && (
               <div key="spotify">
-                <SpotifyWidget onDismiss={() => hide("spotify")} />
+                <YouTubeWidget onDismiss={() => hide("spotify")} />
               </div>
             )}
             {visible.tagesziel && (
