@@ -701,11 +701,9 @@ function VerlaufWidget({ onDismiss, days }) {
 /* ---------- YouTube Playlist Player ---------- */
 const YT_PLAYLIST_KEY = "dayone-yt-playlist";
 const YT_DEFAULT_PLAYLIST = [
-  { id: "gCYcHz2k5x0", title: "Martin Garrix – Animals" },
-  { id: "PT2_F-1esPk", title: "Martin Garrix – Tremor (ft. Dimitri Vegas & Like Mike)" },
+  { id: "xyBpbEPBGdM", title: "Three Days Grace – Animal I Have Become" },
   { id: "hT_nvWreIhg", title: "The Weeknd – Blinding Lights" },
   { id: "kTJczUoc26U", title: "Stromae – Alors On Danse" },
-  { id: "7wtfhZwyrcc", title: "Martin Garrix & Bebe Rexha – In The Name Of Love" },
 ];
 
 function extractYTId(url) {
@@ -1202,7 +1200,7 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
     }
   };
 
-  // Mic dictation via Web Speech API (Chrome). Appends recognized text to input.
+  // Diktierfunktion via Web Speech API
   const toggleMic = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { setMessages(m => [...m, { from: "ai", text: "Spracheingabe wird in diesem Browser nicht unterstützt." }]); return; }
