@@ -700,11 +700,7 @@ function VerlaufWidget({ onDismiss, days }) {
 
 /* ---------- YouTube Playlist Player ---------- */
 const YT_PLAYLIST_KEY = "dayone-yt-playlist";
-const YT_DEFAULT_PLAYLIST = [
-  { id: "xyBpbEPBGdM", title: "Three Days Grace – Animal I Have Become" },
-  { id: "hT_nvWreIhg", title: "The Weeknd – Blinding Lights" },
-  { id: "kTJczUoc26U", title: "Stromae – Alors On Danse" },
-];
+const YT_DEFAULT_PLAYLIST = [];
 
 function extractYTId(url) {
   const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([A-Za-z0-9_-]{11})/);
@@ -719,10 +715,9 @@ function YouTubeWidget({ onDismiss }) {
   const [playlist, setPlaylist] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(YT_PLAYLIST_KEY) || "null");
-      // Leer oder nicht vorhanden → Standard-Playlist
-      if (!saved || saved.length === 0) return YT_DEFAULT_PLAYLIST;
+      if (!Array.isArray(saved)) return [];
       return saved;
-    } catch { return YT_DEFAULT_PLAYLIST; }
+    } catch { return []; }
   });
   const [idx, setIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
