@@ -1,6 +1,6 @@
 {
   "name": "day-one",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Day One – dein persönlicher Tagesplaner",
   "main": "main.js",
   "scripts": {

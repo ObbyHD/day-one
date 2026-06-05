@@ -1054,6 +1054,31 @@ function KIObservationWidget({ onDismiss, data, onObservation }) {
 function PersonalModal({ open, onClose, profile, setProfile, onResetLayout, showGrid, setShowGrid }) {
   const [mounted, setMounted] = useState(open);
   const [show, setShow] = useState(false);
+  // OpenAI API-Key (wird im lokalen Server gespeichert)
+  const [apiKey, setApiKey] = useState("");
+  const [keySet, setKeySet] = useState(false);
+  const [keySaving, setKeySaving] = useState(false);
+  const [keyMsg, setKeyMsg] = useState("");
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/config").then(r => r.json()).then(j => setKeySet(!!j.keySet)).catch(() => {});
+    setApiKey(""); setKeyMsg("");
+  }, [open]);
+  const saveKey = async () => {
+    const k = apiKey.trim();
+    if (!k) return;
+    setKeySaving(true); setKeyMsg("");
+    try {
+      const r = await fetch("/api/config", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ openaiKey: k }),
+      });
+      const j = await r.json();
+      if (j.ok) { setKeySet(true); setApiKey(""); setKeyMsg("Gespeichert ✓"); }
+      else setKeyMsg(j.error || "Fehler beim Speichern.");
+    } catch { setKeyMsg("Server nicht erreichbar."); }
+    finally { setKeySaving(false); }
+  };
   useEffect(() => {
     if (open) {
       setMounted(true);
@@ -1085,6 +1110,33 @@ function PersonalModal({ open, onClose, profile, setProfile, onResetLayout, show
           </button>
         </div>
         <div className="px-7 py-6 space-y-5 max-h-[70vh] overflow-y-auto scroll-thin">
+          {/* OpenAI API-Key */}
+          <div>
+            <label className="block text-[10.5px] uppercase tracking-[0.18em] text-[color:var(--text-mute)] mb-1.5">
+              OpenAI API-Key
+              <span className={`ml-2 normal-case tracking-normal ${keySet ? "text-[color:var(--green,#6f9e6a)]" : "text-[color:var(--text-mute)]"}`}>
+                {keySet ? "· gesetzt ✓" : "· nicht gesetzt"}
+              </span>
+            </label>
+            <div className="flex items-center gap-2">
+              <input type="password" value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") saveKey(); }}
+                placeholder={keySet ? "Neuen Key eingeben zum Ersetzen …" : "sk-..."}
+                autoComplete="off"
+                className="flex-1 bg-[color:var(--bg-card)] border border-[color:var(--line-3)] rounded-lg px-3 py-2.5 text-[13.5px] text-[color:var(--text)] placeholder-[color:var(--text-mute)] focus:outline-none focus:border-[color:var(--accent)]/60 transition-colors" />
+              <button onClick={saveKey} disabled={!apiKey.trim() || keySaving}
+                className="px-3.5 py-2.5 text-[12.5px] font-medium bg-[color:var(--accent)] text-white rounded-lg hover:bg-[color:var(--accent-2)] disabled:opacity-40 transition-colors whitespace-nowrap">
+                {keySaving ? "…" : "Speichern"}
+              </button>
+            </div>
+            <p className="text-[11.5px] text-[color:var(--text-dim)] mt-1.5">
+              {keyMsg || "Nötig für Chat, Diktat & KI-Vorschläge. Bleibt nur lokal auf deinem PC."}
+            </p>
+          </div>
+
+          <div className="border-t border-[color:var(--line)] pt-5" />
+
           <BorderedField label="Name" value={profile.name || ""}
             onChange={(v) => setProfile({ ...profile, name: v })}
             placeholder="Wie sollen wir dich nennen?" rows={1}/>
@@ -2003,6 +2055,8 @@ function App() {
   return (
     <div className="h-full w-full flex">
       {loading && <LoadingSplash fading={splashFade} />}
+      {/* Zieh-Leiste oben (Fenster verschieben) — zwischen Sidebar-Button und Fenster-Buttons */}
+      <div style={{ position: "fixed", top: 0, left: 56, right: 140, height: 40, zIndex: 40, WebkitAppRegion: "drag" }} />
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(c => !c)}
                context={{ todos, notes, profile, history, observation }} onActions={applyChatActions} />
 

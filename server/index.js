@@ -43,7 +43,19 @@ function loadEnv() {
 }
 loadEnv();
 
-const OPENAI_KEY = process.env.OPENAI_API_KEY || "";
+let OPENAI_KEY = process.env.OPENAI_API_KEY || "";
+
+// Key zur Laufzeit setzen (aus der App) + in die userData-.env schreiben
+function persistKey(key) {
+  const p = process.env.DAYONE_ENV_PATH;
+  if (!p) return;
+  let txt = "";
+  try { txt = fs.readFileSync(p, "utf8"); } catch {}
+  const line = "OPENAI_API_KEY=" + key;
+  if (/^OPENAI_API_KEY=.*$/m.test(txt)) txt = txt.replace(/^OPENAI_API_KEY=.*$/m, line);
+  else txt = (txt ? txt.replace(/\s*$/, "") + "\n" : "") + line + "\n";
+  try { fs.writeFileSync(p, txt, "utf8"); } catch {}
+}
 const OPENAI_BASE = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
 const MODEL = process.env.OPENAI_MODEL || "gpt-4o";
 const TRANSCRIBE_MODEL = process.env.TRANSCRIBE_MODEL || "gpt-4o-transcribe";
@@ -408,7 +420,26 @@ async function handleRealtimeToken(req, res) {
   }
 }
 
+// --- Konfiguration: API-Key aus der App setzen/abfragen ---
+async function handleConfig(req, res) {
+  const json = (obj) => { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify(obj)); };
+  if (req.method === "GET") return json({ keySet: !!OPENAI_KEY, model: MODEL });
+  try {
+    const body = JSON.parse((await readBody(req)) || "{}");
+    if (typeof body.openaiKey === "string") {
+      const k = body.openaiKey.trim();
+      if (k && !k.startsWith("sk-")) return json({ ok: false, error: "Key muss mit „sk-“ beginnen." });
+      OPENAI_KEY = k;
+      persistKey(k);
+    }
+    return json({ ok: true, keySet: !!OPENAI_KEY });
+  } catch (e) {
+    return json({ ok: false, error: e.message });
+  }
+}
+
 const server = http.createServer((req, res) => {
+  if (req.url === "/api/config") return handleConfig(req, res);
   if (req.method === "POST" && req.url === "/api/chat") return handleChat(req, res);
   if (req.method === "POST" && req.url === "/api/observe") return handleObserve(req, res);
   if (req.method === "POST" && req.url === "/api/transcribe") return handleTranscribe(req, res);

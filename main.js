@@ -94,6 +94,9 @@ function createWindow() {
     minHeight: 640,
     backgroundColor: '#111111',
     icon: path.join(__dirname, 'assets', 'icon.ico'),
+    // Cleaner Look: keine native Titelleiste, nur die Fenster-Buttons als Overlay
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#111111', symbolColor: '#ece8e2', height: 40 },
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
