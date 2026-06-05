@@ -348,6 +348,14 @@
 <script type="text/babel" data-presets="react">
 const { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } = React;
 
+// Globale Fehler sichtbar machen (statt schwarzem Bildschirm)
+window.addEventListener("error", (e) => {
+  console.error("GLOBAL ERROR:", e.message, e.filename, e.lineno);
+});
+window.addEventListener("unhandledrejection", (e) => {
+  console.error("UNHANDLED REJECTION:", e.reason);
+});
+
 /* ---------- Icons ---------- */
 const Icon = ({ size = 16, stroke = 1.6, fill = "none", children }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size}
@@ -1378,9 +1386,11 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
     const proc = ctx.createScriptProcessor(4096, 1, 1);
     procRef.current = proc;
     proc.onaudioprocess = (e) => {
-      if (!wsRef.current || wsRef.current.readyState !== 1) return;
-      const b64 = floatToB64PCM16(e.inputBuffer.getChannelData(0));
-      wsRef.current.send(JSON.stringify({ type: "input_audio_buffer.append", audio: b64 }));
+      try {
+        if (!wsRef.current || wsRef.current.readyState !== 1) return;
+        const b64 = floatToB64PCM16(e.inputBuffer.getChannelData(0));
+        wsRef.current.send(JSON.stringify({ type: "input_audio_buffer.append", audio: b64 }));
+      } catch (err) { /* Audio-Callback nie crashen lassen */ }
     };
     // Stumm an Ausgang hängen, damit der Prozessor läuft (kein Echo)
     const mute = ctx.createGain(); mute.gain.value = 0;

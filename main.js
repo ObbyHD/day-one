@@ -111,6 +111,21 @@ function createWindow() {
     mainWindow?.loadURL(`http://localhost:${PORT}`);
   });
 
+  // Crash-Diagnose: Renderer abgestürzt → loggen + automatisch neu laden
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    console.error('RENDERER ABGESTÜRZT:', details);
+    if (!app.isQuitting && mainWindow) {
+      setTimeout(() => { try { mainWindow.reload(); } catch {} }, 400);
+    }
+  });
+  mainWindow.webContents.on('console-message', (_e, level, message) => {
+    if (level >= 2) console.error('[Renderer]', message);
+  });
+  // DevTools im Dev-Modus offen, damit Fehler sichtbar sind
+  if (!app.isPackaged) {
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
+  }
+
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     mainWindow.focus();
