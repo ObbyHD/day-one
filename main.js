@@ -93,6 +93,7 @@ function createWindow() {
     minWidth: 960,
     minHeight: 640,
     backgroundColor: '#111111',
+    icon: path.join(__dirname, 'assets', 'icon.ico'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -154,6 +155,7 @@ function createUpdaterWindow() {
   updaterWindow = new BrowserWindow({
     width: 600, height: 420, resizable: false, frame: false,
     backgroundColor: '#111111', title: 'Day One – Installer',
+    icon: path.join(__dirname, 'assets', 'icon.ico'),
     webPreferences: {
       nodeIntegration: false, contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
