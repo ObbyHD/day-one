@@ -3,6 +3,9 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 
+// Autoplay ohne User-Geste erlauben (YouTube, Audio)
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+
 const PORT = 8771;
 let mainWindow = null;
 let tray = null;
@@ -71,6 +74,15 @@ function createWindow() {
   });
 
   mainWindow.setMenuBarVisibility(false);
+
+  // Mikrofon + Medien immer erlauben (für Diktierfunktion)
+  mainWindow.webContents.session.setPermissionRequestHandler((_wc, permission, callback) => {
+    const allowed = ['media', 'microphone', 'audioCapture', 'notifications'];
+    callback(allowed.includes(permission));
+  });
+  mainWindow.webContents.session.setPermissionCheckHandler((_wc, permission) => {
+    return ['microphone', 'media', 'audioCapture'].includes(permission);
+  });
 
   waitForServer(() => {
     mainWindow?.loadURL(`http://localhost:${PORT}`);

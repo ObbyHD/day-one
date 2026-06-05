@@ -700,6 +700,13 @@ function VerlaufWidget({ onDismiss, days }) {
 
 /* ---------- YouTube Playlist Player ---------- */
 const YT_PLAYLIST_KEY = "dayone-yt-playlist";
+const YT_DEFAULT_PLAYLIST = [
+  { id: "gCYcHz2k5x0", title: "Martin Garrix – Animals" },
+  { id: "PT2_F-1esPk", title: "Martin Garrix – Tremor (ft. Dimitri Vegas & Like Mike)" },
+  { id: "hT_nvWreIhg", title: "The Weeknd – Blinding Lights" },
+  { id: "kTJczUoc26U", title: "Stromae – Alors On Danse" },
+  { id: "7wtfhZwyrcc", title: "Martin Garrix & Bebe Rexha – In The Name Of Love" },
+];
 
 function extractYTId(url) {
   const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([A-Za-z0-9_-]{11})/);
@@ -712,7 +719,12 @@ function YouTubeWidget({ onDismiss }) {
   const playlistRef = useRef([]);
   const idxRef = useRef(0);
   const [playlist, setPlaylist] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(YT_PLAYLIST_KEY) || "[]"); } catch { return []; }
+    try {
+      const saved = JSON.parse(localStorage.getItem(YT_PLAYLIST_KEY) || "null");
+      // Erste Installation: Standard-Playlist laden
+      if (!saved) return YT_DEFAULT_PLAYLIST;
+      return saved;
+    } catch { return YT_DEFAULT_PLAYLIST; }
   });
   const [idx, setIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -739,7 +751,12 @@ function YouTubeWidget({ onDismiss }) {
         height: "1", width: "1",
         playerVars: { autoplay: 0, controls: 0, rel: 0 },
         events: {
-          onReady: () => { ytReadyRef.current = true; },
+          onReady: () => {
+            ytReadyRef.current = true;
+            // Ersten Song laden (ohne Autoplay — User muss Play drücken)
+            const vid = playlistRef.current[0]?.id;
+            if (vid) playerRef.current?.cueVideoById(vid);
+          },
           onStateChange: (e) => {
             const S = window.YT.PlayerState;
             if (e.data === S.PLAYING) setPlaying(true);

@@ -306,6 +306,14 @@ const server = http.createServer((req, res) => {
   return serveStatic(req, res);
 });
 
+server.on("error", (e) => {
+  if (e.code === "EADDRINUSE") {
+    console.log(`Port ${PORT} bereits belegt — nutze laufenden Server.`);
+  } else {
+    console.error("Server-Fehler:", e);
+  }
+});
+
 server.listen(PORT, () => {
   console.log(`Day One läuft auf http://localhost:${PORT}  (Modell: ${MODEL}, Key: ${OPENAI_KEY ? "gesetzt" : "FEHLT"})`);
 });
