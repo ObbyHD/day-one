@@ -61,9 +61,9 @@ function startServer(envPath) {
   // Env-Pfad setzen, bevor server/index.js geladen wird
   process.env.DAYONE_ENV_PATH = envPath;
 
-  const serverPath = app.isPackaged
-    ? path.join(process.resourcesPath, 'app', 'server', 'index.js')
-    : path.join(__dirname, 'server', 'index.js');
+  // __dirname funktioniert in Dev UND im gepackten asar (Electron liest asar
+  // transparent). process.resourcesPath/app gibt es bei asar:true NICHT.
+  const serverPath = path.join(__dirname, 'server', 'index.js');
 
   try {
     require(serverPath);
