@@ -295,9 +295,69 @@ async function handleMusic(req, res) {
   }
 }
 
+// --- Whisper Transkription ---
+async function handleTranscribe(req, res) {
+  try {
+    if (!OPENAI_KEY) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ text: "", error: "Kein OPENAI_API_KEY gesetzt." }));
+    }
+    const body = JSON.parse((await readBody(req)) || "{}");
+    const { audio, mimeType = "audio/webm" } = body;
+    if (!audio) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ text: "", error: "Kein Audio" }));
+    }
+
+    const audioBuffer = Buffer.from(audio, "base64");
+    const ext = mimeType.includes("ogg") ? "ogg" : mimeType.includes("mp4") ? "mp4" : "webm";
+    const filename = `audio.${ext}`;
+    const boundary = "----DayOneWhisper" + Date.now();
+
+    // Multipart form-data manuell bauen (keine extra Dependencies)
+    const partHead = Buffer.from(
+      `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="file"; filename="${filename}"\r\n` +
+      `Content-Type: ${mimeType}\r\n\r\n`
+    );
+    const modelPart = Buffer.from(
+      `\r\n--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="model"\r\n\r\n` +
+      `whisper-1\r\n` +
+      `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="language"\r\n\r\n` +
+      `de\r\n` +
+      `--${boundary}--\r\n`
+    );
+    const formData = Buffer.concat([partHead, audioBuffer, modelPart]);
+
+    const apiRes = await fetch(`${OPENAI_BASE}/audio/transcriptions`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${OPENAI_KEY}`,
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      },
+      body: formData,
+    });
+
+    if (!apiRes.ok) {
+      const t = await apiRes.text();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ text: "", error: `Whisper ${apiRes.status}: ${t.slice(0, 200)}` }));
+    }
+    const data = await apiRes.json();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ text: data.text || "" }));
+  } catch (e) {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ text: "", error: e.message }));
+  }
+}
+
 const server = http.createServer((req, res) => {
   if (req.method === "POST" && req.url === "/api/chat") return handleChat(req, res);
   if (req.method === "POST" && req.url === "/api/observe") return handleObserve(req, res);
+  if (req.method === "POST" && req.url === "/api/transcribe") return handleTranscribe(req, res);
   if (req.method === "GET" && req.url === "/api/music") return handleMusic(req, res);
   if (req.method === "GET" && req.url === "/api/health") {
     res.writeHead(200, { "Content-Type": "application/json" });

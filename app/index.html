@@ -1195,20 +1195,53 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
     }
   };
 
-  // Diktierfunktion via Web Speech API
+  // Diktierfunktion via OpenAI Whisper (MediaRecorder → /api/transcribe)
   const toggleMic = () => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { setMessages(m => [...m, { from: "ai", text: "Spracheingabe wird in diesem Browser nicht unterstützt." }]); return; }
-    if (recording && recRef.current) { recRef.current.stop(); return; }
-    const rec = new SR();
-    rec.lang = "de-DE"; rec.interimResults = false; rec.continuous = false;
-    rec.onresult = (e) => {
-      const t = Array.from(e.results).map(r => r[0].transcript).join(" ");
-      setInput(prev => (prev ? prev + " " : "") + t);
-    };
-    rec.onend = () => { setRecording(false); recRef.current = null; };
-    rec.onerror = () => { setRecording(false); recRef.current = null; };
-    recRef.current = rec; setRecording(true); rec.start();
+    // Stoppen falls bereits aufnimmt
+    if (recording) {
+      recRef.current?.stop();
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then((stream) => {
+        const chunks = [];
+        const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? "audio/webm;codecs=opus"
+          : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg";
+        const rec = new MediaRecorder(stream, { mimeType });
+        rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+        rec.onstop = async () => {
+          stream.getTracks().forEach((t) => t.stop());
+          setRecording(false);
+          recRef.current = null;
+          if (!chunks.length) return;
+          const blob = new Blob(chunks, { type: mimeType });
+          const reader = new FileReader();
+          reader.onload = async () => {
+            const base64 = reader.result.split(",")[1];
+            setBusy(true);
+            try {
+              const res = await fetch("/api/transcribe", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ audio: base64, mimeType }),
+              });
+              const data = await res.json();
+              if (data.text) setInput((p) => (p ? p + " " : "") + data.text.trim());
+              else setMessages((m) => [...m, { from: "ai", text: "Diktat leer — bitte nochmal sprechen." }]);
+            } catch {
+              setMessages((m) => [...m, { from: "ai", text: "Diktierfehler — Server erreichbar?" }]);
+            } finally { setBusy(false); }
+          };
+          reader.readAsDataURL(blob);
+        };
+        recRef.current = rec;
+        setRecording(true);
+        rec.start();
+      })
+      .catch(() => {
+        setMessages((m) => [...m, { from: "ai", text: "Mikrofon-Zugriff verweigert." }]);
+      });
   };
   return (
     <aside
