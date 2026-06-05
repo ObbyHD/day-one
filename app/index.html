@@ -1186,6 +1186,12 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
   const rotateTimerRef = useRef(null);
   const stopReqRef = useRef(false);
   const segMimeRef = useRef("audio/webm");
+  // Realtime-Streaming
+  const wsRef = useRef(null);
+  const audioCtxRef = useRef(null);
+  const procRef = useRef(null);
+  const srcRef = useRef(null);
+  const modeRef = useRef(null); // "realtime" | "segment"
 
   // Mic-Menü schließen bei Klick außerhalb
   useEffect(() => {
@@ -1233,6 +1239,9 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
   useEffect(() => () => {
     if (rotateTimerRef.current) clearInterval(rotateTimerRef.current);
     try { recRef.current?.stop(); } catch {}
+    try { wsRef.current?.close(); } catch {}
+    try { procRef.current?.disconnect(); } catch {}
+    try { audioCtxRef.current?.close(); } catch {}
     streamRef.current?.getTracks().forEach((t) => t.stop());
   }, []);
 
@@ -1324,36 +1333,134 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
     recRef.current = rec;
   };
 
-  const toggleMic = () => {
-    // Läuft schon → stoppen (letztes Segment wird noch transkribiert)
+  // Float32-Audio → PCM16 → Base64 (für Realtime-Streaming)
+  const floatToB64PCM16 = (f32) => {
+    const i16 = new Int16Array(f32.length);
+    for (let i = 0; i < f32.length; i++) {
+      let s = Math.max(-1, Math.min(1, f32[i]));
+      i16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+    const bytes = new Uint8Array(i16.buffer);
+    let bin = "";
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return btoa(bin);
+  };
+
+  // ECHTES Wort-für-Wort-Streaming via OpenAI Realtime API.
+  const startRealtime = async (stream) => {
+    // Ephemeren Token vom Server holen
+    const tokenRes = await fetch("/api/realtime-token");
+    const session = await tokenRes.json();
+    const EPH = session?.value || session?.client_secret?.value;
+    if (!EPH) throw new Error(session?.error || "Kein Realtime-Token");
+
+    const ws = new WebSocket("wss://api.openai.com/v1/realtime?intent=transcription", [
+      "realtime",
+      "openai-insecure-api-key." + EPH,
+      "openai-beta.realtime-v1",
+    ]);
+    wsRef.current = ws;
+
+    await new Promise((resolve, reject) => {
+      ws.onopen = () => resolve();
+      ws.onerror = () => reject(new Error("WebSocket-Fehler"));
+      setTimeout(() => reject(new Error("Realtime-Timeout")), 6000);
+    });
+
+    // Audio mit 24 kHz erfassen und als PCM16 streamen
+    const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+    audioCtxRef.current = ctx;
+    const src = ctx.createMediaStreamSource(stream);
+    srcRef.current = src;
+    const proc = ctx.createScriptProcessor(4096, 1, 1);
+    procRef.current = proc;
+    proc.onaudioprocess = (e) => {
+      if (!wsRef.current || wsRef.current.readyState !== 1) return;
+      const b64 = floatToB64PCM16(e.inputBuffer.getChannelData(0));
+      wsRef.current.send(JSON.stringify({ type: "input_audio_buffer.append", audio: b64 }));
+    };
+    // Stumm an Ausgang hängen, damit der Prozessor läuft (kein Echo)
+    const mute = ctx.createGain(); mute.gain.value = 0;
+    src.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
+
+    ws.onmessage = (ev) => {
+      let msg; try { msg = JSON.parse(ev.data); } catch { return; }
+      const t = msg.type || "";
+      if (t.endsWith("input_audio_transcription.delta") && msg.delta) {
+        // Wort/Teilwort live anhängen
+        setInput((p) => p + msg.delta);
+        setTranscribing(true);
+      } else if (t.endsWith("input_audio_transcription.completed")) {
+        // Segment fertig → Leerzeichen als Trenner
+        setInput((p) => (p.endsWith(" ") ? p : p + " "));
+        setTranscribing(false);
+      }
+    };
+    ws.onclose = () => { if (modeRef.current === "realtime") cleanupAudio(); };
+    modeRef.current = "realtime";
+  };
+
+  const cleanupAudio = () => {
+    try { procRef.current && (procRef.current.onaudioprocess = null); } catch {}
+    try { procRef.current?.disconnect(); } catch {}
+    try { srcRef.current?.disconnect(); } catch {}
+    try { audioCtxRef.current?.close(); } catch {}
+    procRef.current = null; srcRef.current = null; audioCtxRef.current = null;
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setRecording(false);
+    setTranscribing(false);
+  };
+
+  const toggleMic = async () => {
+    // Läuft schon → stoppen
     if (recording) {
       stopReqRef.current = true;
-      if (rotateTimerRef.current) { clearInterval(rotateTimerRef.current); rotateTimerRef.current = null; }
-      try { recRef.current?.stop(); } catch {}
+      if (modeRef.current === "realtime") {
+        // Letztes Audio flushen, kurz auf finale Wörter warten, dann schließen
+        try { wsRef.current?.send(JSON.stringify({ type: "input_audio_buffer.commit" })); } catch {}
+        setTimeout(() => { try { wsRef.current?.close(); } catch {} cleanupAudio(); }, 900);
+      } else {
+        if (rotateTimerRef.current) { clearInterval(rotateTimerRef.current); rotateTimerRef.current = null; }
+        try { recRef.current?.stop(); } catch {}
+      }
       return;
     }
     const audioConstraints = selectedMicId
       ? { audio: { deviceId: { exact: selectedMicId } } }
       : { audio: true };
-    navigator.mediaDevices.getUserMedia(audioConstraints)
-      .then((stream) => {
-        streamRef.current = stream;
-        stopReqRef.current = false;
-        segMimeRef.current = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-          ? "audio/webm;codecs=opus"
-          : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg";
-        setRecording(true);
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(audioConstraints);
+    } catch {
+      setMessages((m) => [...m, { from: "ai", text: "Mikrofon-Zugriff verweigert oder Gerät nicht verfügbar." }]);
+      return;
+    }
+    streamRef.current = stream;
+    stopReqRef.current = false;
+    setRecording(true);
+
+    // 1) Echtes Streaming versuchen
+    try {
+      await startRealtime(stream);
+      return;
+    } catch (err) {
+      // 2) Fallback: 4,5-s-Segmente
+      try { wsRef.current?.close(); } catch {} wsRef.current = null;
+      modeRef.current = "segment";
+      segMimeRef.current = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg";
+      startSegment();
+      rotateTimerRef.current = setInterval(() => {
+        const old = recRef.current;
         startSegment();
-        // Alle 4,5 s: aktuelles Segment abschließen (→ transkribieren) und neues starten
-        rotateTimerRef.current = setInterval(() => {
-          const old = recRef.current;
-          startSegment();          // neues Segment SOFORT starten (kein Lücken-Verlust)
-          try { old?.stop(); } catch {}  // altes abschließen → onstop transkribiert
-        }, 4500);
-      })
-      .catch(() => {
-        setMessages((m) => [...m, { from: "ai", text: "Mikrofon-Zugriff verweigert oder Gerät nicht verfügbar." }]);
-      });
+        try { old?.stop(); } catch {}
+      }, 4500);
+    }
   };
   return (
     <aside

@@ -367,10 +367,52 @@ async function handleTranscribe(req, res) {
   }
 }
 
+// --- Realtime-Transkription: ephemeren Token erstellen (Key bleibt am Server) ---
+async function handleRealtimeToken(req, res) {
+  try {
+    if (!OPENAI_KEY) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "Kein OPENAI_API_KEY gesetzt." }));
+    }
+    const r = await fetch(`${OPENAI_BASE}/realtime/client_secrets`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${OPENAI_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        expires_after: { anchor: "created_at", seconds: 600 },
+        session: {
+          type: "transcription",
+          audio: {
+            input: {
+              format: { type: "audio/pcm", rate: 24000 },
+              transcription: {
+                model: TRANSCRIBE_MODEL,
+                language: "de",
+                prompt: "Tagesplanung auf Deutsch. Wörter: Aufgabe, Termin, Uhr, Minuten, Sport, Solo üben, Gitarre, Lernen, Meeting, Pause, einplanen, erledigen, verschieben.",
+              },
+              turn_detection: { type: "server_vad", threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 500 },
+            },
+          },
+        },
+      }),
+    });
+    const data = await r.json();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    if (!r.ok) return res.end(JSON.stringify({ error: `Realtime ${r.status}: ${JSON.stringify(data).slice(0, 300)}` }));
+    res.end(JSON.stringify(data));
+  } catch (e) {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: e.message }));
+  }
+}
+
 const server = http.createServer((req, res) => {
   if (req.method === "POST" && req.url === "/api/chat") return handleChat(req, res);
   if (req.method === "POST" && req.url === "/api/observe") return handleObserve(req, res);
   if (req.method === "POST" && req.url === "/api/transcribe") return handleTranscribe(req, res);
+  if (req.method === "GET" && req.url === "/api/realtime-token") return handleRealtimeToken(req, res);
   if (req.method === "GET" && req.url === "/api/music") return handleMusic(req, res);
   if (req.method === "GET" && req.url === "/api/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
