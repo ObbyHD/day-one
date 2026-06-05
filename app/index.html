@@ -1241,8 +1241,16 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
           stream.getTracks().forEach((t) => t.stop());
           setRecording(false);
           recRef.current = null;
-          if (!chunks.length) return;
+          if (!chunks.length) {
+            setMessages((m) => [...m, { from: "ai", text: "Keine Audiodaten — Mikrofon prüfen (Rechtsklick auf Mikrofon-Button)." }]);
+            return;
+          }
           const blob = new Blob(chunks, { type: mimeType });
+          // Zu klein = stilles Mikrofon
+          if (blob.size < 1000) {
+            setMessages((m) => [...m, { from: "ai", text: `Audio zu klein (${blob.size} Bytes) — falsches Mikrofon? Rechtsklick wählen.` }]);
+            return;
+          }
           const reader = new FileReader();
           reader.onload = async () => {
             const base64 = reader.result.split(",")[1];
@@ -1255,16 +1263,17 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
               });
               const data = await res.json();
               if (data.text) setInput((p) => (p ? p + " " : "") + data.text.trim());
-              else setMessages((m) => [...m, { from: "ai", text: "Diktat leer — bitte nochmal sprechen." }]);
+              else if (data.error) setMessages((m) => [...m, { from: "ai", text: `Whisper-Fehler: ${data.error}` }]);
+              else setMessages((m) => [...m, { from: "ai", text: "Nichts erkannt — bitte nochmal sprechen." }]);
             } catch (err) {
-              setMessages((m) => [...m, { from: "ai", text: `Diktierfehler: ${err?.message || "Server nicht erreichbar"}` }]);
+              setMessages((m) => [...m, { from: "ai", text: `Netzwerkfehler: ${err?.message}` }]);
             } finally { setTranscribing(false); }
           };
           reader.readAsDataURL(blob);
         };
         recRef.current = rec;
         setRecording(true);
-        rec.start();
+        rec.start(200); // 200ms Timeslice → Chunks kommen garantiert rein
       })
       .catch(() => {
         setMessages((m) => [...m, { from: "ai", text: "Mikrofon-Zugriff verweigert." }]);
@@ -1309,7 +1318,7 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
             value={recording ? "" : transcribing ? "" : input}
             onChange={(e) => { if (!recording && !transcribing) setInput(e.target.value); }}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-            placeholder={recording ? "🎤 Sprich jetzt …" : transcribing ? "⏳ Transkribiere …" : "Nachricht …"}
+            placeholder={recording ? "Sprich jetzt …" : transcribing ? "Transkribiere …" : "Nachricht …"}
             disabled={recording || transcribing}
             className="flex-1 min-w-0 bg-transparent resize-none outline-none text-[14px] leading-5 text-[color:var(--text)] placeholder-[color:var(--text-mute)] py-1 px-2 max-h-24 disabled:opacity-70"/>
           <div ref={micMenuRef} className="relative shrink-0">
