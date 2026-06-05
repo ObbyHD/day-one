@@ -1164,8 +1164,31 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
   const [input, setInput] = useState("");
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [micDevices, setMicDevices] = useState([]);
+  const [selectedMicId, setSelectedMicId] = useState("");
+  const [showMicMenu, setShowMicMenu] = useState(false);
   const listRef = useRef(null);
   const recRef = useRef(null);
+  const micMenuRef = useRef(null);
+
+  // Mic-Menü schließen bei Klick außerhalb
+  useEffect(() => {
+    if (!showMicMenu) return;
+    const handler = (e) => { if (!micMenuRef.current?.contains(e.target)) setShowMicMenu(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showMicMenu]);
+
+  // Mikrofone laden (braucht erst Permission, deshalb lazy bei Rechtsklick)
+  const loadMicDevices = async () => {
+    try {
+      // Kurz Permission anfordern damit Labels sichtbar werden
+      const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+      s.getTracks().forEach(t => t.stop());
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      setMicDevices(devices.filter(d => d.kind === "audioinput"));
+    } catch {}
+  };
   useEffect(() => {
     if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [messages, busy]);
@@ -1202,7 +1225,10 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
       recRef.current?.stop();
       return;
     }
-    navigator.mediaDevices.getUserMedia({ audio: true })
+    const audioConstraints = selectedMicId
+      ? { audio: { deviceId: { exact: selectedMicId } } }
+      : { audio: true };
+    navigator.mediaDevices.getUserMedia(audioConstraints)
       .then((stream) => {
         const chunks = [];
         const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
@@ -1229,8 +1255,8 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
               const data = await res.json();
               if (data.text) setInput((p) => (p ? p + " " : "") + data.text.trim());
               else setMessages((m) => [...m, { from: "ai", text: "Diktat leer — bitte nochmal sprechen." }]);
-            } catch {
-              setMessages((m) => [...m, { from: "ai", text: "Diktierfehler — Server erreichbar?" }]);
+            } catch (err) {
+              setMessages((m) => [...m, { from: "ai", text: `Diktierfehler: ${err?.message || "Server nicht erreichbar"}` }]);
             } finally { setBusy(false); }
           };
           reader.readAsDataURL(blob);
@@ -1283,14 +1309,45 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
             placeholder="Nachricht …"
             className="flex-1 min-w-0 bg-transparent resize-none outline-none text-[14px] leading-5 text-[color:var(--text)] placeholder-[color:var(--text-mute)] py-1 px-2 max-h-24"/>
-          <button onClick={toggleMic}
-            className={`relative w-8 h-8 shrink-0 grid place-items-center rounded-lg transition-colors
-              ${recording
-                ? "mic-recording bg-[color:var(--accent)]/15 text-[color:var(--accent-2)]"
-                : "text-[color:var(--text-dim)] hover:text-[color:var(--text)] hover:bg-white/5"}`}
-            aria-label="Diktieren">
-            <MicIco size={15} />
-          </button>
+          <div ref={micMenuRef} className="relative shrink-0">
+            <button onClick={toggleMic}
+              onContextMenu={(e) => { e.preventDefault(); loadMicDevices(); setShowMicMenu(v => !v); }}
+              className={`relative w-8 h-8 grid place-items-center rounded-lg transition-colors
+                ${recording
+                  ? "mic-recording bg-[color:var(--accent)]/15 text-[color:var(--accent-2)]"
+                  : "text-[color:var(--text-dim)] hover:text-[color:var(--text)] hover:bg-white/5"}`}
+              aria-label="Diktieren (Rechtsklick = Mikrofon wählen)">
+              <MicIco size={15} />
+            </button>
+            {showMicMenu && (
+              <div className="absolute bottom-10 left-0 z-50 min-w-[220px] bg-[#1e1e1e] border border-[color:var(--line-2)] rounded-xl shadow-2xl overflow-hidden py-1">
+                <div className="px-3 py-1.5 text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-mute)]">Mikrofon</div>
+                {micDevices.length === 0 && (
+                  <div className="px-3 py-2 text-[12px] text-[color:var(--text-dim)]">Keine Geräte gefunden</div>
+                )}
+                {micDevices.map((d) => (
+                  <button key={d.deviceId} onClick={() => { setSelectedMicId(d.deviceId); setShowMicMenu(false); }}
+                    className={`w-full text-left px-3 py-2 text-[12.5px] flex items-center gap-2 hover:bg-white/[0.05] transition-colors
+                      ${selectedMicId === d.deviceId || (!selectedMicId && d.deviceId === "default")
+                        ? "text-[color:var(--text)]" : "text-[color:var(--text-dim)]"}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                      selectedMicId === d.deviceId || (!selectedMicId && d.deviceId === "default")
+                        ? "bg-[color:var(--accent)]" : "bg-transparent border border-[color:var(--line-3)]"
+                    }`}/>
+                    {d.label || `Mikrofon ${d.deviceId.slice(0, 8)}`}
+                  </button>
+                ))}
+                <div className="border-t border-[color:var(--line)] mt-1 pt-1 px-3 pb-1.5">
+                  <label className="flex items-center justify-between text-[12px] text-[color:var(--text-dim)]">
+                    Halten zum Aufnehmen
+                    <span className="w-7 h-4 rounded-full bg-[color:var(--accent)] relative">
+                      <span className="absolute right-0.5 top-0.5 w-3 h-3 rounded-full bg-white"/>
+                    </span>
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
           <button onClick={send} disabled={!input.trim() || busy}
             className="w-8 h-8 shrink-0 grid place-items-center rounded-lg bg-[color:var(--accent)] text-white disabled:bg-white/5 disabled:text-[color:var(--text-mute)] hover:bg-[color:var(--accent-2)] transition-colors"
             aria-label="Senden">
