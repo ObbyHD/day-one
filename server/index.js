@@ -12,19 +12,29 @@ const APP_DIR = path.join(ROOT, "app");
 const PORT = process.env.PORT || 8771;
 
 // --- tiny .env loader (no dependency) ---
+// Platzhalter aus .env.example werden ignoriert (z.B. "sk-...dein-key-hier...").
+function isPlaceholder(key, val) {
+  if (!val) return true;
+  if (val.includes("dein-key-hier") || val.includes("dein-key")) return true;
+  // OPENAI_API_KEY muss mit sk- beginnen und lang genug sein
+  if (key === "OPENAI_API_KEY" && (!val.startsWith("sk-") || val.length < 20 || val.includes("..."))) return true;
+  return false;
+}
 function loadEnv() {
   const extra = process.env.DAYONE_ENV_PATH;
-  const candidates = extra
-    ? [extra, path.join(ROOT, ".env"), path.join(__dirname, ".env")]
-    : [path.join(ROOT, ".env"), path.join(__dirname, ".env")];
+  // Reihenfolge: echte Projekt-.env zuerst (Dev), dann userData (Packaged).
+  const candidates = [path.join(ROOT, ".env"), path.join(__dirname, ".env")];
+  if (extra) candidates.push(extra);
   for (const p of candidates) {
     try {
       const txt = fs.readFileSync(p, "utf8");
       txt.split(/\r?\n/).forEach((line) => {
         const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/i);
-        if (m && !process.env[m[1]]) {
-          let v = m[2].trim();
-          if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+        if (!m) return;
+        let v = m[2].trim();
+        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+        // Nur setzen wenn noch nicht gesetzt UND kein Platzhalter
+        if (!process.env[m[1]] && !isPlaceholder(m[1], v)) {
           process.env[m[1]] = v;
         }
       });
@@ -312,32 +322,18 @@ async function handleTranscribe(req, res) {
     const audioBuffer = Buffer.from(audio, "base64");
     const ext = mimeType.includes("ogg") ? "ogg" : mimeType.includes("mp4") ? "mp4" : "webm";
     const filename = `audio.${ext}`;
-    const boundary = "----DayOneWhisper" + Date.now();
 
-    // Multipart form-data manuell bauen (keine extra Dependencies)
-    const partHead = Buffer.from(
-      `--${boundary}\r\n` +
-      `Content-Disposition: form-data; name="file"; filename="${filename}"\r\n` +
-      `Content-Type: ${mimeType}\r\n\r\n`
-    );
-    const modelPart = Buffer.from(
-      `\r\n--${boundary}\r\n` +
-      `Content-Disposition: form-data; name="model"\r\n\r\n` +
-      `whisper-1\r\n` +
-      `--${boundary}\r\n` +
-      `Content-Disposition: form-data; name="language"\r\n\r\n` +
-      `de\r\n` +
-      `--${boundary}--\r\n`
-    );
-    const formData = Buffer.concat([partHead, audioBuffer, modelPart]);
+    // FormData/Blob sind in Node 18+ (Electron) global verfügbar — undici setzt
+    // den Multipart-Boundary korrekt, robuster als manuell.
+    const form = new FormData();
+    form.append("file", new Blob([audioBuffer], { type: mimeType }), filename);
+    form.append("model", "whisper-1");
+    form.append("language", "de");
 
     const apiRes = await fetch(`${OPENAI_BASE}/audio/transcriptions`, {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${OPENAI_KEY}`,
-        "Content-Type": `multipart/form-data; boundary=${boundary}`,
-      },
-      body: formData,
+      headers: { "Authorization": `Bearer ${OPENAI_KEY}` },
+      body: form,
     });
 
     if (!apiRes.ok) {

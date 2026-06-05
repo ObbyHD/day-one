@@ -9,25 +9,31 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('enable-speech-dispatcher');
 app.commandLine.appendSwitch('enable-features', 'WebSpeech');
 
+// App-Name explizit setzen → userData ist immer %APPDATA%\Day One (auch im Dev)
+app.setName('Day One');
+
 const PORT = 8771;
 let mainWindow = null;
 let tray = null;
 
 // ── userData .env ────────────────────────────────────────────────────────────
-// API-Key und Einstellungen liegen in %APPDATA%/Day One/.env
-// Beim ersten Start wird .env.example als Vorlage kopiert.
+// API-Key liegt in %APPDATA%/Day One/.env. Wir kopieren NIE den Platzhalter-Key
+// aus .env.example (sonst überschreibt er einen echten Key) — nur ein leeres Template.
 function ensureUserEnv() {
   const userDataPath = app.getPath('userData');
   const dest = path.join(userDataPath, '.env');
-  if (!fs.existsSync(dest)) {
-    const exampleSrc = app.isPackaged
-      ? path.join(process.resourcesPath, 'app', '.env.example')
-      : path.join(__dirname, '.env.example');
-    try {
-      if (fs.existsSync(exampleSrc)) fs.copyFileSync(exampleSrc, dest);
-      else fs.writeFileSync(dest, '# Day One Konfiguration\nOPENAI_API_KEY=\n', 'utf8');
-    } catch {}
-  }
+  const TEMPLATE = '# Day One Konfiguration — trag hier deinen OpenAI-Key ein:\nOPENAI_API_KEY=\n# OPENAI_MODEL=gpt-4o\n';
+  try {
+    if (!fs.existsSync(dest)) {
+      fs.writeFileSync(dest, TEMPLATE, 'utf8');
+    } else {
+      // Falls eine alte Datei den Platzhalter-Key enthält: bereinigen
+      const txt = fs.readFileSync(dest, 'utf8');
+      if (txt.includes('dein-key-hier') || /OPENAI_API_KEY=sk-\.\.\./.test(txt)) {
+        fs.writeFileSync(dest, TEMPLATE, 'utf8');
+      }
+    }
+  } catch {}
   return dest;
 }
 
