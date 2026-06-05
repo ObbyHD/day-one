@@ -1182,6 +1182,10 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
   const listRef = useRef(null);
   const recRef = useRef(null);
   const micMenuRef = useRef(null);
+  const streamRef = useRef(null);
+  const rotateTimerRef = useRef(null);
+  const stopReqRef = useRef(false);
+  const segMimeRef = useRef("audio/webm");
 
   // Mic-Menü schließen bei Klick außerhalb
   useEffect(() => {
@@ -1225,6 +1229,13 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
   };
   useEffect(() => { autoGrow(); }, [input, recording, transcribing]);
 
+  // Aufräumen beim Schließen
+  useEffect(() => () => {
+    if (rotateTimerRef.current) clearInterval(rotateTimerRef.current);
+    try { recRef.current?.stop(); } catch {}
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+  }, []);
+
   // Mikrofone laden (braucht erst Permission, deshalb lazy bei Rechtsklick)
   const loadMicDevices = async () => {
     try {
@@ -1265,10 +1276,60 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
   };
 
   // Diktierfunktion via OpenAI Whisper (MediaRecorder → /api/transcribe)
+  // Ein Audio-Segment an Whisper schicken und Text live anhängen.
+  const transcribeSegment = (blob) => {
+    if (!blob || blob.size < 1200) return; // zu kurz/still → überspringen
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = reader.result.split(",")[1];
+      setTranscribing(true);
+      try {
+        const res = await fetch("/api/transcribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ audio: base64, mimeType: segMimeRef.current }),
+        });
+        const data = await res.json();
+        if (data.text && data.text.trim()) {
+          setInput((p) => (p ? p.replace(/\s+$/, "") + " " : "") + data.text.trim());
+        } else if (data.error) {
+          setMessages((m) => [...m, { from: "ai", text: `Whisper-Fehler: ${data.error}` }]);
+        }
+      } catch (err) {
+        setMessages((m) => [...m, { from: "ai", text: `Netzwerkfehler: ${err?.message}` }]);
+      } finally { setTranscribing(false); }
+    };
+    reader.readAsDataURL(blob);
+  };
+
+  // Ein neues Aufnahme-Segment starten (eigenständige, gültige Audiodatei).
+  const startSegment = () => {
+    const stream = streamRef.current;
+    if (!stream) return;
+    const chunks = [];
+    const rec = new MediaRecorder(stream, { mimeType: segMimeRef.current });
+    rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+    rec.onstop = () => {
+      const blob = new Blob(chunks, { type: segMimeRef.current });
+      transcribeSegment(blob); // jedes Segment sofort transkribieren → live Text
+      // Wenn der Nutzer gestoppt hat: Stream freigeben & UI zurücksetzen
+      if (stopReqRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+        recRef.current = null;
+        setRecording(false);
+      }
+    };
+    rec.start();
+    recRef.current = rec;
+  };
+
   const toggleMic = () => {
-    // Stoppen falls bereits aufnimmt
+    // Läuft schon → stoppen (letztes Segment wird noch transkribiert)
     if (recording) {
-      recRef.current?.stop();
+      stopReqRef.current = true;
+      if (rotateTimerRef.current) { clearInterval(rotateTimerRef.current); rotateTimerRef.current = null; }
+      try { recRef.current?.stop(); } catch {}
       return;
     }
     const audioConstraints = selectedMicId
@@ -1276,52 +1337,22 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
       : { audio: true };
     navigator.mediaDevices.getUserMedia(audioConstraints)
       .then((stream) => {
-        const chunks = [];
-        const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        streamRef.current = stream;
+        stopReqRef.current = false;
+        segMimeRef.current = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
           ? "audio/webm;codecs=opus"
           : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg";
-        const rec = new MediaRecorder(stream, { mimeType });
-        rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-        rec.onstop = async () => {
-          stream.getTracks().forEach((t) => t.stop());
-          setRecording(false);
-          recRef.current = null;
-          if (!chunks.length) {
-            setMessages((m) => [...m, { from: "ai", text: "Keine Audiodaten — Mikrofon prüfen (Rechtsklick auf Mikrofon-Button)." }]);
-            return;
-          }
-          const blob = new Blob(chunks, { type: mimeType });
-          // Zu klein = stilles Mikrofon
-          if (blob.size < 1000) {
-            setMessages((m) => [...m, { from: "ai", text: `Audio zu klein (${blob.size} Bytes) — falsches Mikrofon? Rechtsklick wählen.` }]);
-            return;
-          }
-          const reader = new FileReader();
-          reader.onload = async () => {
-            const base64 = reader.result.split(",")[1];
-            setTranscribing(true);
-            try {
-              const res = await fetch("/api/transcribe", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ audio: base64, mimeType }),
-              });
-              const data = await res.json();
-              if (data.text) setInput((p) => (p ? p + " " : "") + data.text.trim());
-              else if (data.error) setMessages((m) => [...m, { from: "ai", text: `Whisper-Fehler: ${data.error}` }]);
-              else setMessages((m) => [...m, { from: "ai", text: "Nichts erkannt — bitte nochmal sprechen." }]);
-            } catch (err) {
-              setMessages((m) => [...m, { from: "ai", text: `Netzwerkfehler: ${err?.message}` }]);
-            } finally { setTranscribing(false); }
-          };
-          reader.readAsDataURL(blob);
-        };
-        recRef.current = rec;
         setRecording(true);
-        rec.start(200); // 200ms Timeslice → Chunks kommen garantiert rein
+        startSegment();
+        // Alle 4,5 s: aktuelles Segment abschließen (→ transkribieren) und neues starten
+        rotateTimerRef.current = setInterval(() => {
+          const old = recRef.current;
+          startSegment();          // neues Segment SOFORT starten (kein Lücken-Verlust)
+          try { old?.stop(); } catch {}  // altes abschließen → onstop transkribiert
+        }, 4500);
       })
       .catch(() => {
-        setMessages((m) => [...m, { from: "ai", text: "Mikrofon-Zugriff verweigert." }]);
+        setMessages((m) => [...m, { from: "ai", text: "Mikrofon-Zugriff verweigert oder Gerät nicht verfügbar." }]);
       });
   };
   return (

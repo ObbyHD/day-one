@@ -184,10 +184,10 @@ function systemPrompt(context) {
   ].join("\n");
 }
 
-function readBody(req) {
+function readBody(req, maxBytes = 1e6) {
   return new Promise((resolve, reject) => {
     let data = "";
-    req.on("data", (c) => { data += c; if (data.length > 1e6) req.destroy(); });
+    req.on("data", (c) => { data += c; if (data.length > maxBytes) req.destroy(); });
     req.on("end", () => resolve(data));
     req.on("error", reject);
   });
@@ -312,7 +312,8 @@ async function handleTranscribe(req, res) {
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ text: "", error: "Kein OPENAI_API_KEY gesetzt." }));
     }
-    const body = JSON.parse((await readBody(req)) || "{}");
+    // Audio kann groß sein (Base64) — Limit hoch (Whisper erlaubt bis 25 MB Datei)
+    const body = JSON.parse((await readBody(req, 40e6)) || "{}");
     const { audio, mimeType = "audio/webm" } = body;
     if (!audio) {
       res.writeHead(200, { "Content-Type": "application/json" });
