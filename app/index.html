@@ -1397,25 +1397,29 @@ function Sidebar({ collapsed, onToggle, context, onActions }) {
             </button>
 
             {showMicMenu && (
-              <div className="absolute bottom-11 right-0 z-50 w-[260px] bg-[#1c1c1c] border border-[color:var(--line-2)] rounded-xl shadow-2xl overflow-hidden">
-                <div className="px-3.5 pt-3 pb-2 text-[10px] uppercase tracking-[0.2em] text-[color:var(--text-mute)] border-b border-[color:var(--line)]">
+              <div className="absolute bottom-11 left-1/2 -translate-x-1/2 z-[60] w-[320px] max-w-[90vw] bg-[#1c1c1c] border border-[color:var(--line-2)] rounded-xl shadow-2xl overflow-hidden">
+                <div className="px-4 pt-3 pb-2.5 text-[10px] uppercase tracking-[0.2em] text-[color:var(--text-mute)] border-b border-[color:var(--line)]">
                   Mikrofon wählen
                 </div>
-                <div className="py-1 max-h-[240px] overflow-y-auto scroll-thin">
+                <div className="py-1.5 max-h-[260px] overflow-y-auto scroll-thin">
                   {micDevices.length === 0 ? (
-                    <div className="px-3.5 py-3 text-[12px] text-[color:var(--text-dim)] leading-relaxed">
+                    <div className="px-4 py-3 text-[12px] text-[color:var(--text-dim)] leading-relaxed">
                       Lade Geräte … Falls leer: Mikrofon-Zugriff erlauben.
                     </div>
                   ) : micDevices.map((d) => {
                     const active = selectedMicId === d.deviceId || (!selectedMicId && d.deviceId === "default");
+                    // "Default - Microphone (C-Media...)" → kürzen auf Kerngerätenamen
+                    let label = d.label || `Mikrofon ${d.deviceId.slice(0, 6)}`;
+                    label = label.replace(/\s*\([0-9a-f:]+\)\s*$/i, "").trim();
                     return (
                       <button key={d.deviceId} onClick={() => { setSelectedMicId(d.deviceId); setShowMicMenu(false); }}
-                        className={`w-full text-left px-3.5 py-2.5 text-[12.5px] flex items-center gap-2.5 transition-colors
-                          ${active ? "text-[color:var(--text)] bg-white/[0.04]" : "text-[color:var(--text-dim)] hover:bg-white/[0.03] hover:text-[color:var(--text)]"}`}>
+                        title={d.label}
+                        className={`w-full text-left px-4 py-2.5 text-[12.5px] flex items-center gap-3 transition-colors
+                          ${active ? "text-[color:var(--text)] bg-white/[0.05]" : "text-[color:var(--text-dim)] hover:bg-white/[0.03] hover:text-[color:var(--text)]"}`}>
                         <span className="w-4 shrink-0 text-[color:var(--accent)]">
                           {active && <CheckIco size={14} />}
                         </span>
-                        <span className="flex-1 min-w-0 truncate">{d.label || `Mikrofon ${d.deviceId.slice(0, 6)}`}</span>
+                        <span className="flex-1 min-w-0 leading-snug">{label}</span>
                       </button>
                     );
                   })}
